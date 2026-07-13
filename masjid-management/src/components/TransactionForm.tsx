@@ -178,7 +178,7 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
 
         {/* Buttons */}
         <Form.Item>
-          <Space style={{ width: '100%', justifyContent: 'flex-end', gap: '8px' }}>
+          <Space className="form-actions" style={{ width: '100%', justifyContent: 'flex-end', gap: '8px' }}>
             <Button 
               onClick={onCancel}
               disabled={loading}

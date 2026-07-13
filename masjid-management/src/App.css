@@ -53,6 +53,12 @@ body {
   z-index: 99;
 }
 
+@media (max-width: 480px) {
+  .app-admin-username {
+    display: none;
+  }
+}
+
 .sider-trigger-btn {
   font-size: 18px;
 }

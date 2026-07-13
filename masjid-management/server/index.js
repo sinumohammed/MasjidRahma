@@ -84,7 +84,9 @@ function requireAdmin(req, res, next) {
 function dateRangeClause(req) {
   const { startDate, endDate } = req.query;
   if (startDate && endDate) {
-    return { clause: 'WHERE date BETWEEN $1 AND $2', params: [startDate, endDate] };
+    // Cast to date so this matches regardless of whether stored `date` values
+    // are plain YYYY-MM-DD strings or full ISO timestamps (e.g. today's entries).
+    return { clause: 'WHERE date::date BETWEEN $1::date AND $2::date', params: [startDate, endDate] };
   }
   return { clause: '', params: [] };
 }

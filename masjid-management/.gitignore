@@ -20,6 +20,9 @@ dist-ssr
 # SQLite database (legacy local dev only, not used in production)
 server/masjid.db
 
+# Contains real contributor names/amounts - local-only, not for the public repo
+src/assets/masjid excel.xlsx
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

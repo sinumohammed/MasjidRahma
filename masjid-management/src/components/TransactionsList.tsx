@@ -195,7 +195,7 @@ export default function TransactionsList() {
             onClick={handleAddClick}
             className="add-transaction-btn"
           >
-            Add Transaction
+            <span className="add-transaction-btn-label">Add Transaction</span>
           </Button>
         )}
       </div>

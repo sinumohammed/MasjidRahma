@@ -104,3 +104,19 @@
     width: 100%;
   }
 }
+
+@media (max-width: 480px) {
+  .add-transaction-btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .add-transaction-btn-label {
+    display: none;
+  }
+}

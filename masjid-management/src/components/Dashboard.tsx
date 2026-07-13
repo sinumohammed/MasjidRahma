@@ -20,7 +20,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [chartsRefreshKey, setChartsRefreshKey] = useState(0);
-  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()]);
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(1, 'year'), dayjs()]);
 
   const rangeParams = {
     startDate: dateRange[0].format(DATE_FORMAT),

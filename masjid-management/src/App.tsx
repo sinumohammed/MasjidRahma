@@ -109,7 +109,7 @@ function App() {
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isAdmin ? (
               <>
-                <span><UserOutlined /> Admin: {username}</span>
+                <span className="app-admin-username"><UserOutlined /> {username}</span>
                 <Button icon={<LogoutOutlined />} onClick={logout}>
                   Logout
                 </Button>
