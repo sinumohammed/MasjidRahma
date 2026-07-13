@@ -192,7 +192,7 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
               loading={loading}
               className="form-button-submit"
             >
-              {isEditMode ? 'Save Changes' : 'Add Transaction'}
+              {isEditMode ? 'Save' : 'Add'}
             </Button>
           </Space>
         </Form.Item>

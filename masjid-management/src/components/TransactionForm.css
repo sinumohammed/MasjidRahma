@@ -202,18 +202,10 @@
     margin-bottom: 12px;
   }
 
-  .form-actions {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .form-actions :global(.ant-space-item) {
-    width: 100%;
-  }
-
   .form-button-submit,
   .form-button-cancel {
-    width: 100%;
+    padding: 0 16px;
+    font-size: 13px;
   }
 }
 
