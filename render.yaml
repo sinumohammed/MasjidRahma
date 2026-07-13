@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: masjid-management-api
+    runtime: node
+    rootDir: masjid-management/server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false

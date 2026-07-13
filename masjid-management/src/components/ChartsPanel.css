@@ -1,0 +1,56 @@
+.chart-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: white !important;
+}
+
+.charts-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 240px;
+}
+
+.chart-tooltip {
+  background: #ffffff;
+  border: 1px solid #e1e0d9;
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+}
+
+.chart-tooltip-label {
+  color: #52514e;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.chart-tooltip-key {
+  width: 10px;
+  height: 2px;
+  display: inline-block;
+}
+
+.chart-tooltip-name {
+  color: #52514e;
+}
+
+.chart-tooltip-value {
+  margin-left: auto;
+  font-weight: 600;
+  color: #0b0b0b;
+}
+
+@media (max-width: 768px) {
+  .chart-card .recharts-responsive-container {
+    min-height: 220px;
+  }
+}

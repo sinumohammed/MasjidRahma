@@ -1,0 +1,267 @@
+.dashboard-container {
+  padding: 24px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  min-height: 100vh;
+  border-radius: 8px;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.dashboard-title {
+  font-size: 32px;
+  font-weight: bold;
+  color: #1f2937;
+  margin: 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dashboard-add-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.dashboard-grid {
+  margin-bottom: 24px;
+}
+
+.dashboard-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 500px;
+}
+
+.summary-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  overflow: hidden;
+  position: relative;
+  background: white !important;
+}
+
+.summary-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+}
+
+.income-card {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f8f7 100%) !important;
+  border-left: 4px solid #52c41a;
+}
+
+.expense-card {
+  background: linear-gradient(135deg, #fff1f0 0%, #ffe7e6 100%) !important;
+  border-left: 4px solid #f5222d;
+}
+
+.balance-card {
+  background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%) !important;
+  border-left: 4px solid #1890ff;
+}
+
+.balance-card.negative {
+  background: linear-gradient(135deg, #fff1f0 0%, #ffe7e6 100%) !important;
+  border-left: 4px solid #f5222d;
+}
+
+.card-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+}
+
+.income-icon {
+  color: #52c41a;
+  background: rgba(82, 196, 26, 0.1) !important;
+}
+
+.expense-icon {
+  color: #f5222d;
+  background: rgba(245, 34, 45, 0.1) !important;
+}
+
+.balance-icon {
+  color: #1890ff;
+  background: rgba(24, 144, 255, 0.1) !important;
+}
+
+.balance-icon.negative {
+  color: #f5222d;
+  background: rgba(245, 34, 45, 0.1) !important;
+}
+
+.card-footer {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #8c8c8c;
+  font-style: italic;
+}
+
+.stats-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: white !important;
+}
+
+.stat-item {
+  padding: 16px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.stat-item:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #8c8c8c;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #1890ff;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: 16px;
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .dashboard-title {
+    font-size: 24px;
+  }
+
+  .summary-card {
+    border-radius: 10px;
+  }
+
+  .card-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-container {
+    padding: 12px;
+  }
+
+  .dashboard-title {
+    font-size: 20px;
+    margin-bottom: 20px;
+  }
+
+  .stat-item {
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+}
+
+/* Dark Theme Overrides */
+:root[data-theme='dark'] .dashboard-container {
+  background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
+}
+
+:root[data-theme='dark'] .dashboard-title {
+  color: #e5e7eb;
+  text-shadow: none;
+}
+
+:root[data-theme='dark'] .summary-card,
+:root[data-theme='dark'] .stats-card,
+:root[data-theme='dark'] .chart-card {
+  background: #1f1f1f !important;
+}
+
+:root[data-theme='dark'] .income-card {
+  background: linear-gradient(135deg, #10281f 0%, #0f2a29 100%) !important;
+}
+
+:root[data-theme='dark'] .expense-card {
+  background: linear-gradient(135deg, #2a1615 0%, #2c1414 100%) !important;
+}
+
+:root[data-theme='dark'] .balance-card {
+  background: linear-gradient(135deg, #10202c 0%, #142a3a 100%) !important;
+}
+
+:root[data-theme='dark'] .balance-card.negative {
+  background: linear-gradient(135deg, #2a1615 0%, #2c1414 100%) !important;
+}
+
+:root[data-theme='dark'] .stat-item {
+  background: linear-gradient(135deg, #232323 0%, #1a1a1a 100%);
+}
+
+:root[data-theme='dark'] .card-footer,
+:root[data-theme='dark'] .stat-label {
+  color: #a0a0a0;
+}
+
+/* Modal Styling */
+.transaction-modal .ant-modal-content {
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.transaction-modal .ant-modal-header {
+  display: none;
+}
+
+.transaction-modal .ant-modal-body {
+  padding: 0;
+}
+
+/* Add Transaction Button */
+:global(.ant-btn-primary) {
+  font-weight: 600;
+}
+
