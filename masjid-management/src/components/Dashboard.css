@@ -7,25 +7,23 @@
 
 .dashboard-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 16px;
   margin-bottom: 24px;
-}
-
-.dashboard-title {
-  font-size: 32px;
-  font-weight: bold;
-  color: #1f2937;
-  margin: 0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .dashboard-header-controls {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.dashboard-header-controls .ant-picker {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .dashboard-add-btn {
@@ -165,13 +163,7 @@
   }
 
   .dashboard-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .dashboard-title {
-    font-size: 24px;
+    justify-content: center;
   }
 
   .summary-card {
@@ -188,11 +180,6 @@
 @media (max-width: 480px) {
   .dashboard-container {
     padding: 12px;
-  }
-
-  .dashboard-title {
-    font-size: 20px;
-    margin-bottom: 20px;
   }
 
   .stat-item {

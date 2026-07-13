@@ -1,7 +1,8 @@
 # 🕌 Masjid Management App - Complete Architecture Documentation
 
-**Status**: Full-stack application with React frontend + Node.js/Express backend  
-**Created**: 2026-07-12  
+**Status**: ✅ Deployed to production (see [DEPLOYMENT.md](DEPLOYMENT.md) for live URLs and hosting details)
+**Created**: 2026-07-12
+**Last Updated**: 2026-07-13
 **Purpose**: Islamic financial management system for income/expense tracking with analytics
 
 ---
@@ -27,8 +28,15 @@
 masjid-management/
 ├── src/                          # React frontend
 │   ├── components/
-│   │   ├── Dashboard.tsx        # Main dashboard component
-│   │   ├── Dashboard.css        # Dashboard styling
+│   │   ├── Dashboard.tsx/.css       # Main dashboard
+│   │   ├── TransactionForm.tsx/.css # Add/edit transaction modal form
+│   │   ├── TransactionsList.tsx/.css# Transaction table (filter/edit/delete)
+│   │   ├── ChartsPanel.tsx/.css     # Recharts visualizations
+│   │   ├── SettingsPage.tsx/.css    # Settings / admin password change
+│   │   ├── AuthModal.tsx            # Admin login / first-time setup modal
+│   ├── context/
+│   │   ├── AuthContext.tsx          # Admin auth/session state
+│   │   ├── SettingsContext.tsx      # App-wide settings state
 │   ├── services/
 │   │   ├── api.ts              # API client with TypeScript interfaces
 │   ├── App.tsx                 # Root app component
@@ -37,15 +45,19 @@ masjid-management/
 │   ├── index.css               # Base styling
 │
 ├── server/                       # Express.js backend
-│   ├── index.js                # API server & routes
-│   ├── masjid.db               # SQLite database file
+│   ├── index.js                # API server & routes (Postgres via `pg`)
 │   ├── package.json            # Backend dependencies
+│   ├── .env.example             # DATABASE_URL / JWT_SECRET / FRONTEND_URL / PORT
 │
 ├── public/                       # Static assets
 ├── vite.config.ts              # Vite build config
 ├── tsconfig.json               # TypeScript config
 ├── package.json                # Frontend dependencies
+├── .env.example                 # VITE_API_URL
 └── index.html                  # HTML entry point
+
+render.yaml                      # Render Blueprint (repo root)
+DEPLOYMENT.md                    # Hosting/deploy reference (repo root)
 ```
 
 ---
@@ -66,9 +78,14 @@ masjid-management/
 |------------|---------|---------|
 | Node.js | 20.17.0 | Runtime |
 | Express.js | 4.18.2 | REST API server |
-| SQLite3 | 5.1.6 | Database |
+| PostgreSQL (`pg`) | 8.13.1 | Database (hosted on Neon) |
 | UUID | 9.0.0 | ID generation |
-| CORS | 2.8.5 | Cross-origin requests |
+| CORS | 2.8.5 | Cross-origin requests (restricted via `FRONTEND_URL`) |
+| bcryptjs | 2.4.3 | Password hashing for admin auth |
+| jsonwebtoken | 9.0.2 | Admin session tokens |
+| dotenv | 16.4.7 | Loads `.env` in local development |
+
+> Migrated from SQLite to Postgres for production hosting — free hosts like Render don't persist a SQLite file's disk across redeploys, so the app needs a real hosted database. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
@@ -133,6 +150,17 @@ masjid-management/
 
 ## 📡 API ENDPOINTS
 
+### Auth
+
+```
+GET  /api/auth/status               → { hasAdmin: boolean }
+POST /api/auth/setup                → { username, password } → { token, username } (only works once, before any admin exists)
+POST /api/auth/login                → { username, password } → { token, username }
+POST /api/auth/change-password      → (requires admin token) { currentPassword, newPassword } → { message }
+```
+
+Write endpoints below (`POST`/`PUT`/`DELETE` on `/api/transactions*`) require an `Authorization: Bearer <token>` header from a logged-in admin.
+
 ### 1. Get All Transactions
 ```
 GET /api/transactions
@@ -194,9 +222,18 @@ GET /health
 Response: { status: "API is running" }
 ```
 
+### 9. Seed Test Data
+```
+POST /api/transactions/seed
+Body: { count?: number }  // 1-500, default 50
+Response: { message: "Seeded N transactions" }
+```
+
 ---
 
 ## 💾 DATABASE SCHEMA
+
+Hosted on Neon (Postgres). Tables are created automatically on server startup (`initializeDatabase()` in `index.js`).
 
 ### Transactions Table
 ```sql
@@ -207,7 +244,17 @@ CREATE TABLE IF NOT EXISTS transactions (
   amount REAL NOT NULL,                  -- In dollars
   description TEXT,                      -- Optional details
   date TEXT NOT NULL,                    -- Transaction date
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+```
+
+### Users Table (admin auth)
+```sql
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 ```
 
@@ -351,11 +398,11 @@ import { getSummary, type Summary } from '../services/api';
 ## ✅ TESTING CHECKLIST
 
 ### Backend Verification
-- [ ] API Server starts on port 5000
-- [ ] Health check responds: `GET http://localhost:5000/health`
-- [ ] SQLite database file exists: `server/masjid.db`
-- [ ] Transactions table created
-- [ ] All 7 endpoints accessible
+- [ ] API Server starts on port 5000 (local) or Render's assigned port (prod)
+- [ ] Health check responds: `GET /health`
+- [ ] Connects to Postgres (Neon in prod, local Postgres or Neon branch for dev)
+- [ ] Transactions and users tables created
+- [ ] All endpoints accessible (see [API Endpoints](#api-endpoints))
 
 ### Frontend Verification  
 - [ ] Dev server starts on port 5173
@@ -384,6 +431,8 @@ import { getSummary, type Summary } from '../services/api';
 
 ## 🚀 DEPLOYMENT READINESS
 
+**✅ Deployed.** Full hosting setup, live URLs, environment variables, and redeploy instructions now live in [DEPLOYMENT.md](DEPLOYMENT.md) — this section just covers local build commands.
+
 ### Frontend Build
 ```bash
 npm run build
@@ -396,18 +445,14 @@ npm run build
 npm start
 ```
 
-### Environment Variables (TODO)
-Currently hardcoded:
-- Frontend: `API_BASE_URL = 'http://localhost:5000/api'`
-- Backend: `PORT = 5000`
-
-**Recommendation**: Move to `.env` files for deployment
+### Environment Variables
+No longer hardcoded — both frontend and backend read from environment variables (`.env.example` files provided in each). See [DEPLOYMENT.md](DEPLOYMENT.md) for the full list and production values.
 
 ### Production Checklist
-- [ ] Environment variables externalized
-- [ ] Database path configurable
-- [ ] API URL configurable per environment
-- [ ] CORS origin whitelist configured
+- [x] Environment variables externalized
+- [x] Database migrated off local disk to hosted Postgres (Neon)
+- [x] API URL configurable per environment (`VITE_API_URL`)
+- [x] CORS origin whitelist configured (`FRONTEND_URL`)
 - [ ] Database backups automated
 - [ ] Error logging implemented
 - [ ] Performance monitoring added
@@ -428,20 +473,22 @@ Currently hardcoded:
 
 ---
 
-## 🔧 QUICK START COMMANDS
+## 🔧 QUICK START COMMANDS (Local Development)
 
 ### Terminal 1 - Backend
 ```bash
-cd server
-npm install  # (if not done)
-npm run dev  # Start on port 5000
+cd masjid-management/server
+npm install                     # (if not done)
+cp .env.example .env            # fill in DATABASE_URL (Neon or local Postgres), JWT_SECRET
+npm run dev                     # Start on port 5000
 ```
 
 ### Terminal 2 - Frontend
 ```bash
 cd masjid-management
-npm install  # (if not done)
-npm run dev  # Start on port 5173
+npm install                     # (if not done)
+cp .env.example .env            # optional locally; falls back to http://<host>:5000/api if unset
+npm run dev                     # Start on port 5173
 ```
 
 ### Open Browser
@@ -449,7 +496,9 @@ npm run dev  # Start on port 5173
 http://localhost:5173
 ```
 
+For production URLs and deployment steps, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ---
 
-**Last Updated**: 2026-07-12  
-**App Status**: ✅ Core infrastructure complete, ready for feature development
+**Last Updated**: 2026-07-13
+**App Status**: ✅ Deployed to production (Vercel + Render + Neon) — see [DEPLOYMENT.md](DEPLOYMENT.md)

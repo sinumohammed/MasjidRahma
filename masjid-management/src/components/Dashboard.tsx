@@ -87,7 +87,6 @@ export default function Dashboard() {
     <>
       <div className="dashboard-container">
         <div className="dashboard-header">
-          <h1 className="dashboard-title">📊 Masjid Rahma</h1>
           <div className="dashboard-header-controls">
             <RangePicker
               value={dateRange}

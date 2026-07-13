@@ -30,3 +30,6 @@ server/masjid.db
 *.njsproj
 *.sln
 *.sw?
+
+.vercel
+.env*

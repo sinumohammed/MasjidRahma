@@ -104,7 +104,7 @@ function App() {
             className="sider-trigger-btn"
           />
           <div className="app-header-title">
-            Masjid Financial Management System
+            Masjid Rahma
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isAdmin ? (
@@ -129,7 +129,7 @@ function App() {
           {renderContent()}
         </Layout.Content>
         <Layout.Footer style={{ textAlign: 'center', color: '#8c8c8c' }}>
-          © 2026 Masjid Management | Built with React & Ant Design
+          © 2026 Masjid Rahma | By Sinu
         </Layout.Footer>
       </Layout>
     </Layout>
