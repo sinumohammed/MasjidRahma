@@ -46,17 +46,39 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-.yearly-schedule-table :global(.ant-table) {
+.yearly-schedule-table .ant-table {
   border-radius: 12px;
 }
 
-.yearly-schedule-table :global(.ant-table-thead > tr > th) {
+.yearly-schedule-table .ant-table-thead > tr > th {
   text-align: center;
 }
 
-.yearly-schedule-table :global(.ant-table-tbody > tr > td) {
+.yearly-schedule-table .ant-table-tbody > tr > td {
   text-align: center;
   white-space: nowrap;
+}
+
+.yearly-schedule-table .ant-table-tbody > tr.yearly-schedule-today-row > td {
+  background-color: rgba(37, 99, 235, 0.12);
+  box-shadow: inset 0 1px 0 rgba(37, 99, 235, 0.5), inset 0 -1px 0 rgba(37, 99, 235, 0.5);
+}
+
+.yearly-schedule-table .ant-table-tbody > tr.yearly-schedule-today-row:hover > td {
+  background-color: rgba(37, 99, 235, 0.2);
+}
+
+.yearly-schedule-today-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background-color: #2563eb;
+  color: #fff;
+  font-weight: 700;
 }
 
 /* Dark Theme Overrides */
@@ -73,6 +95,15 @@
   background: #1f1f1f;
 }
 
+:root[data-theme='dark'] .yearly-schedule-table .ant-table-tbody > tr.yearly-schedule-today-row > td {
+  background-color: rgba(96, 165, 250, 0.2);
+  box-shadow: inset 0 1px 0 rgba(96, 165, 250, 0.6), inset 0 -1px 0 rgba(96, 165, 250, 0.6);
+}
+
+:root[data-theme='dark'] .yearly-schedule-table .ant-table-tbody > tr.yearly-schedule-today-row:hover > td {
+  background-color: rgba(96, 165, 250, 0.3);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .yearly-schedule-container {
@@ -81,9 +112,20 @@
 
   .yearly-schedule-title {
     font-size: 18px;
+    white-space: nowrap;
   }
 
   .yearly-schedule-header {
     gap: 8px;
+  }
+}
+
+@media (max-width: 400px) {
+  .yearly-schedule-title {
+    font-size: 15px;
+  }
+
+  .yearly-schedule-year-nav {
+    gap: 6px;
   }
 }

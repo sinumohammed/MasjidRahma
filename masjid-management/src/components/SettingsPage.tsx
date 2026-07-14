@@ -1,13 +1,12 @@
 import { useState } from 'react';
-import { Card, Switch, Select, Button, InputNumber, message, Space, Divider, Alert, Form, Input, Collapse } from 'antd';
+import { Card, Switch, Select, Button, message, Space, Divider, Alert, Form, Input, Collapse } from 'antd';
 import {
   BulbOutlined,
   DownloadOutlined,
-  DatabaseOutlined,
   MoonOutlined,
   LockOutlined,
 } from '@ant-design/icons';
-import { getTransactions, seedTransactions, changePassword } from '../services/api';
+import { getTransactions, changePassword } from '../services/api';
 import { useSettings, CURRENCY_SYMBOLS, type CurrencyCode } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
 import './SettingsPage.css';
@@ -43,8 +42,6 @@ export default function SettingsPage() {
   const { theme, setTheme, currency, setCurrency } = useSettings();
   const { isAdmin } = useAuth();
   const [exporting, setExporting] = useState(false);
-  const [seedCount, setSeedCount] = useState<number>(50);
-  const [seeding, setSeeding] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordForm] = Form.useForm();
 
@@ -71,18 +68,6 @@ export default function SettingsPage() {
       message.error(err instanceof Error ? err.message : 'Failed to export data');
     } finally {
       setExporting(false);
-    }
-  };
-
-  const handleSeed = async () => {
-    try {
-      setSeeding(true);
-      const result = await seedTransactions(seedCount);
-      message.success(result.message);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : 'Failed to generate test data');
-    } finally {
-      setSeeding(false);
     }
   };
 
@@ -206,24 +191,6 @@ export default function SettingsPage() {
               </Button>
               <Button icon={<DownloadOutlined />} onClick={() => handleExport('json')} loading={exporting}>
                 Export as JSON
-              </Button>
-            </Space>
-          </>
-        ) : (
-          <Alert message="Log in as admin to use this feature" type="info" showIcon />
-        )}
-      </Card>
-
-      <Card title={<span><DatabaseOutlined /> Test Data Generator</span>} className="settings-card" bordered={false}>
-        {isAdmin ? (
-          <>
-            <p className="settings-row-hint">
-              Populate the database with realistic sample income and expense transactions for testing.
-            </p>
-            <Space wrap>
-              <InputNumber min={1} max={500} value={seedCount} onChange={(v) => setSeedCount(v || 1)} />
-              <Button type="primary" icon={<DatabaseOutlined />} onClick={handleSeed} loading={seeding}>
-                Generate Test Data
               </Button>
             </Space>
           </>

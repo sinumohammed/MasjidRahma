@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Table, Button, Alert, Spin } from 'antd';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -32,14 +32,15 @@ export default function YearlyScheduleView() {
     load();
   }, [year]);
 
+  const now = new Date();
+  const isCurrentYear = year === now.getFullYear();
+  const currentMonthIndex = now.getMonth();
+  const currentDay = now.getDate();
+
+  const isTodayRow = (record: YearlyScheduleMember) =>
+    isCurrentYear && record.months[currentMonthIndex].includes(currentDay);
+
   const columns: ColumnsType<YearlyScheduleMember> = [
-    {
-      title: 'ID',
-      dataIndex: 'unique_id',
-      key: 'unique_id',
-      width: 90,
-      fixed: 'left',
-    },
     {
       title: 'Name',
       dataIndex: 'name',
@@ -53,15 +54,30 @@ export default function YearlyScheduleView() {
       key: label,
       width: 80,
       align: 'center' as const,
-      render: (_: unknown, record: YearlyScheduleMember) =>
-        record.months[i].length > 0 ? record.months[i].join(', ') : '-',
+      render: (_: unknown, record: YearlyScheduleMember) => {
+        if (record.months[i].length === 0) return '-';
+        if (isCurrentYear && i === currentMonthIndex && record.months[i].includes(currentDay)) {
+          return record.months[i]
+            .map((day) =>
+              day === currentDay ? (
+                <span key={day} className="yearly-schedule-today-badge">
+                  {day}
+                </span>
+              ) : (
+                <span key={day}>{day}</span>
+              )
+            )
+            .reduce((acc, el, idx) => (idx === 0 ? [el] : [...acc, ', ', el]), [] as ReactNode[]);
+        }
+        return record.months[i].join(', ');
+      },
     })),
   ];
 
   return (
     <div className="yearly-schedule-container">
       <div className="yearly-schedule-header">
-        <h1 className="yearly-schedule-title">📅 Yearly Food Supply Schedule</h1>
+        <h1 className="yearly-schedule-title">📅 Yearly Schedule</h1>
         <div className="yearly-schedule-year-nav">
           <Button icon={<LeftOutlined />} onClick={() => setYear((y) => y - 1)} />
           <span className="yearly-schedule-year">{year}</span>
@@ -91,6 +107,7 @@ export default function YearlyScheduleView() {
           pagination={false}
           className="yearly-schedule-table"
           scroll={{ x: 'max-content' }}
+          rowClassName={(record) => (isTodayRow(record) ? 'yearly-schedule-today-row' : '')}
         />
       )}
     </div>

@@ -166,7 +166,15 @@ export default function TodayAssignmentCard() {
             onChange={(e) => setMode(e.target.value)}
             options={[
               { label: 'One-time swap for a day', value: 'swap' },
-              { label: 'Set as current & continue from here', value: 'set-current' },
+              {
+                label: (
+                  <Tooltip title="Coming soon - reserved for super admin">
+                    Set as current & continue from here
+                  </Tooltip>
+                ),
+                value: 'set-current',
+                disabled: true,
+              },
             ]}
             optionType="button"
             buttonStyle="solid"
