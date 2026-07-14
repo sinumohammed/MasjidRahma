@@ -1,0 +1,89 @@
+.yearly-schedule-container {
+  padding: 24px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  min-height: 100vh;
+  border-radius: 8px;
+}
+
+.yearly-schedule-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.yearly-schedule-title {
+  font-size: 32px;
+  font-weight: bold;
+  color: #1f2937;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin: 0;
+}
+
+.yearly-schedule-year-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.yearly-schedule-year {
+  font-size: 18px;
+  font-weight: 700;
+  min-width: 56px;
+  text-align: center;
+}
+
+.yearly-schedule-loading {
+  display: flex;
+  justify-content: center;
+  padding: 60px 0;
+}
+
+.yearly-schedule-table {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.yearly-schedule-table :global(.ant-table) {
+  border-radius: 12px;
+}
+
+.yearly-schedule-table :global(.ant-table-thead > tr > th) {
+  text-align: center;
+}
+
+.yearly-schedule-table :global(.ant-table-tbody > tr > td) {
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Dark Theme Overrides */
+:root[data-theme='dark'] .yearly-schedule-container {
+  background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
+}
+
+:root[data-theme='dark'] .yearly-schedule-title {
+  color: #e5e7eb;
+  text-shadow: none;
+}
+
+:root[data-theme='dark'] .yearly-schedule-table {
+  background: #1f1f1f;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .yearly-schedule-container {
+    padding: 16px;
+  }
+
+  .yearly-schedule-title {
+    font-size: 18px;
+  }
+
+  .yearly-schedule-header {
+    gap: 8px;
+  }
+}

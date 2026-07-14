@@ -1,0 +1,116 @@
+.today-assignment-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.25);
+  color: white;
+}
+
+.today-assignment-card :global(.ant-card-body) {
+  padding: 20px 24px;
+}
+
+.today-assignment-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.today-assignment-icon {
+  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+}
+
+.today-assignment-photo {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.today-assignment-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.today-assignment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.today-assignment-label {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+}
+
+.today-assignment-name {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.today-assignment-phone {
+  font-size: 14px;
+  opacity: 0.9;
+  margin-top: 2px;
+}
+
+.today-assignment-original {
+  font-size: 12px;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+
+.today-assignment-swap-btn {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+}
+
+.today-assignment-swap-btn:hover {
+  background: rgba(255, 255, 255, 0.35) !important;
+  color: white !important;
+}
+
+.today-assignment-error,
+.today-assignment-empty {
+  color: white;
+  opacity: 0.9;
+}
+
+.swap-modal-field-label {
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.swap-modal-hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .today-assignment-body {
+    flex-wrap: wrap;
+  }
+
+  .today-assignment-name {
+    font-size: 18px;
+  }
+}

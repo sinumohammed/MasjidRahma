@@ -5,6 +5,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { getSummary, type Summary } from '../services/api';
 import TransactionForm from './TransactionForm';
 import ChartsPanel from './ChartsPanel';
+import TodayAssignmentCard from './Members/TodayAssignmentCard';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
@@ -112,7 +113,13 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        
+
+        <Row gutter={[24, 24]} className="dashboard-grid" style={{ marginBottom: '24px' }}>
+          <Col xs={24}>
+            <TodayAssignmentCard />
+          </Col>
+        </Row>
+
         <Row gutter={[24, 24]} className="dashboard-grid">
           {/* Total Income Card */}
           <Col xs={24} sm={12} lg={8}>

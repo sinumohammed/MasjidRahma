@@ -36,6 +36,37 @@ export interface AuthResponse {
   username: string;
 }
 
+export interface Member {
+  id: string;
+  unique_id: string;
+  position: number;
+  name: string;
+  address: string;
+  phone: string;
+  member_count: number;
+  active: boolean;
+  created_at: string;
+}
+
+export interface Assignment {
+  date: string;
+  member: Member | null;
+  swapped: boolean;
+  originalMember?: Member;
+}
+
+export interface YearlyScheduleMember {
+  id: string;
+  unique_id: string;
+  name: string;
+  months: number[][];
+}
+
+export interface YearlySchedule {
+  year: number;
+  members: YearlyScheduleMember[];
+}
+
 function buildQuery(params: DateRangeParams = {}): string {
   const query = new URLSearchParams();
   if (params.startDate) query.set('startDate', params.startDate);
@@ -160,4 +191,92 @@ export const seedTransactions = async (count: number): Promise<{ message: string
   });
   if (!response.ok) throw new Error('Failed to generate test data');
   return response.json();
+};
+
+// Members / food-supply rotation API Functions
+
+export const getMembers = async (): Promise<Member[]> => {
+  const response = await fetch(`${API_BASE_URL}/members`);
+  if (!response.ok) throw new Error('Failed to fetch members');
+  return response.json();
+};
+
+export const createMember = async (
+  data: { name: string; address: string; phone: string; memberCount: number }
+): Promise<Member> => {
+  const response = await fetch(`${API_BASE_URL}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to create member');
+  return result;
+};
+
+export const updateMember = async (
+  id: string,
+  data: { name: string; address: string; phone: string; memberCount: number; active: boolean }
+): Promise<Member> => {
+  const response = await fetch(`${API_BASE_URL}/members/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to update member');
+  return result;
+};
+
+export const getTodayAssignment = async (): Promise<Assignment> => {
+  const response = await fetch(`${API_BASE_URL}/members/today`);
+  if (!response.ok) throw new Error('Failed to fetch today\'s assignment');
+  return response.json();
+};
+
+export const getSchedule = async (days: number = 14): Promise<Assignment[]> => {
+  const response = await fetch(`${API_BASE_URL}/members/schedule?days=${days}`);
+  if (!response.ok) throw new Error('Failed to fetch schedule');
+  return response.json();
+};
+
+export const getYearlySchedule = async (year?: number): Promise<YearlySchedule> => {
+  const query = year ? `?year=${year}` : '';
+  const response = await fetch(`${API_BASE_URL}/members/yearly-schedule${query}`);
+  if (!response.ok) throw new Error('Failed to fetch yearly schedule');
+  return response.json();
+};
+
+export const createSwap = async (
+  date: string,
+  memberId: string,
+  reason?: string
+): Promise<{ date: string; member_id: string; reason: string | null }> => {
+  const response = await fetch(`${API_BASE_URL}/members/swap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ date, memberId, reason }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to create swap');
+  return result;
+};
+
+export const deleteSwap = async (date: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/members/swap/${date}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) throw new Error('Failed to delete swap');
+};
+
+export const setCurrentMember = async (memberId: string): Promise<Assignment> => {
+  const response = await fetch(`${API_BASE_URL}/members/set-current`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ memberId }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to set current member');
+  return result;
 };

@@ -4,6 +4,8 @@ import {
   DashboardOutlined,
   FileTextOutlined,
   SettingOutlined,
+  TeamOutlined,
+  CalendarOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   UserOutlined,
@@ -11,6 +13,8 @@ import {
 } from '@ant-design/icons';
 import Dashboard from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
+import MembersList from './components/Members/MembersList';
+import YearlyScheduleView from './components/Members/YearlyScheduleView';
 import SettingsPage from './components/SettingsPage';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
@@ -38,6 +42,16 @@ function App() {
       label: 'Transactions',
     },
     {
+      key: 'members',
+      icon: <TeamOutlined />,
+      label: 'Members',
+    },
+    {
+      key: 'yearly-schedule',
+      icon: <CalendarOutlined />,
+      label: 'Yearly Schedule',
+    },
+    {
       key: 'settings',
       icon: <SettingOutlined />,
       label: 'Settings',
@@ -50,6 +64,10 @@ function App() {
         return <Dashboard />;
       case 'transactions':
         return <TransactionsList />;
+      case 'members':
+        return <MembersList />;
+      case 'yearly-schedule':
+        return <YearlyScheduleView />;
       case 'settings':
         return <SettingsPage />;
       default:
