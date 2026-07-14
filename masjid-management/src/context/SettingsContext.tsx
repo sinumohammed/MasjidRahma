@@ -28,7 +28,7 @@ const SettingsContext = createContext<SettingsContextValue | undefined>(undefine
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<ThemeMode>(
-    () => (localStorage.getItem(THEME_KEY) as ThemeMode) || 'light'
+    () => (localStorage.getItem(THEME_KEY) as ThemeMode) || 'dark'
   );
   const [currency, setCurrency] = useState<CurrencyCode>(
     () => (localStorage.getItem(CURRENCY_KEY) as CurrencyCode) || 'INR'

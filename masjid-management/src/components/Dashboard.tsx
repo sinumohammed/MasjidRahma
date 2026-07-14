@@ -55,7 +55,7 @@ export default function Dashboard() {
     };
 
     fetchSummary();
-    // Refresh every 30 seconds
+    // Refresh every 5 minutes
     const interval = setInterval(fetchSummary, 300000);
     return () => clearInterval(interval);
   }, [dateRange]);

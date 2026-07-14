@@ -25,7 +25,13 @@ function downloadFile(filename: string, content: string, mimeType: string) {
 function toCsv(rows: Record<string, unknown>[]) {
   if (rows.length === 0) return '';
   const headers = Object.keys(rows[0]);
-  const escape = (val: unknown) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+  const escape = (val: unknown) => {
+    let str = String(val ?? '');
+    // Neutralize formula injection in spreadsheet apps (Excel/Sheets execute
+    // cells starting with =, +, -, or @ as formulas when the CSV is opened).
+    if (/^[=+\-@]/.test(str)) str = `'${str}`;
+    return `"${str.replace(/"/g, '""')}"`;
+  };
   const lines = [headers.join(',')];
   for (const row of rows) {
     lines.push(headers.map((h) => escape(row[h])).join(','));

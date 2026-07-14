@@ -57,6 +57,20 @@ body {
   .app-admin-username {
     display: none;
   }
+
+  .app-header-auth-btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app-header-auth-btn-label {
+    display: none;
+  }
 }
 
 .sider-trigger-btn {

@@ -9,8 +9,13 @@ import jwt from 'jsonwebtoken';
 const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
+
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start.');
+  process.exit(1);
+}
 
 // Middleware
 app.use(cors(FRONTEND_URL ? { origin: FRONTEND_URL } : {}));
@@ -83,10 +88,16 @@ function requireAdmin(req, res, next) {
 // Build an optional WHERE clause for date-range filtering
 function dateRangeClause(req) {
   const { startDate, endDate } = req.query;
+  // Cast to date so this matches regardless of whether stored `date` values
+  // are plain YYYY-MM-DD strings or full ISO timestamps (e.g. today's entries).
   if (startDate && endDate) {
-    // Cast to date so this matches regardless of whether stored `date` values
-    // are plain YYYY-MM-DD strings or full ISO timestamps (e.g. today's entries).
     return { clause: 'WHERE date::date BETWEEN $1::date AND $2::date', params: [startDate, endDate] };
+  }
+  if (startDate) {
+    return { clause: 'WHERE date::date >= $1::date', params: [startDate] };
+  }
+  if (endDate) {
+    return { clause: 'WHERE date::date <= $1::date', params: [endDate] };
   }
   return { clause: '', params: [] };
 }
@@ -272,10 +283,18 @@ app.put('/api/transactions/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     const { type, category, amount, description, date } = req.body;
 
-    await dbRun(
+    if (!type || !category || !amount || !date) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const result = await dbRun(
       'UPDATE transactions SET type = $1, category = $2, amount = $3, description = $4, date = $5 WHERE id = $6',
       [type, category, amount, description || '', date, id]
     );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
 
     const updated = await dbGet('SELECT * FROM transactions WHERE id = $1', [id]);
     res.json(updated);

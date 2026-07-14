@@ -110,17 +110,20 @@ function App() {
             {isAdmin ? (
               <>
                 <span className="app-admin-username"><UserOutlined /> {username}</span>
-                <Button icon={<LogoutOutlined />} onClick={logout}>
-                  Logout
+                <Button className="app-header-auth-btn" icon={<LogoutOutlined />} onClick={logout}>
+                  <span className="app-header-auth-btn-label">Logout</span>
                 </Button>
               </>
             ) : (
               <Button
+                className="app-header-auth-btn"
                 type={hasAdmin === false ? 'primary' : 'default'}
                 icon={<UserOutlined />}
                 onClick={() => setAuthModalOpen(true)}
               >
-                {hasAdmin === false ? 'Set Up Admin Account' : 'Admin Login'}
+                <span className="app-header-auth-btn-label">
+                  {hasAdmin === false ? 'Set Up Admin Account' : 'Admin Login'}
+                </span>
               </Button>
             )}
           </div>

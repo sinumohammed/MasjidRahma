@@ -28,6 +28,14 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
       { label: 'Zakat', value: 'Zakat' },
       { label: 'Masjid Fund', value: 'Masjid Fund' },
       { label: 'Other Income', value: 'Other Income' },
+      { label: 'Collection Drive', value: 'Collection Drive' },
+      { label: 'General', value: 'General' },
+      { label: 'General Income', value: 'General Income' },
+      { label: 'Jummah Collection', value: 'Jummah Collection' },
+      { label: 'Masjid payment', value: 'Masjid payment' },
+      { label: 'Nikah', value: 'Nikah' },
+      { label: 'Opening Balance', value: 'Opening Balance' },
+      { label: 'Sadaqah', value: 'Sadaqah' }
     ],
     expense: [
       { label: 'Utilities', value: 'Utilities' },
@@ -36,6 +44,12 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
       { label: 'Staff', value: 'Staff' },
       { label: 'Events', value: 'Events' },
       { label: 'Miscellaneous', value: 'Miscellaneous' },
+      { label: 'General', value: 'General' },
+      { label: 'Imam Salary', value: 'Imam Salary' },
+      { label: 'Industrial Work Salary', value: 'Industrial Work Salary' },
+      { label: 'Industrial Materials', value: 'Industrial Materials' },
+      { label: 'Staff Salary', value: 'Staff Salary' },
+      { label: 'Tax', value: 'Tax' }
     ],
   };
 
