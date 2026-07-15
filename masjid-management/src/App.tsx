@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Layout, Menu, Button, ConfigProvider, theme as antdTheme } from 'antd';
 import {
   DashboardOutlined,
@@ -30,17 +30,27 @@ function App() {
   const [isMobile, setIsMobile] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
+  useEffect(() => {
+    if (!isAdmin && activeKey === 'transactions') {
+      setActiveKey('dashboard');
+    }
+  }, [isAdmin, activeKey]);
+
   const menuItems: MenuProps['items'] = [
     {
       key: 'dashboard',
       icon: <DashboardOutlined />,
       label: 'Dashboard',
     },
-    {
-      key: 'transactions',
-      icon: <FileTextOutlined />,
-      label: 'Transactions',
-    },
+    ...(isAdmin
+      ? [
+          {
+            key: 'transactions',
+            icon: <FileTextOutlined />,
+            label: 'Transactions',
+          },
+        ]
+      : []),
     {
       key: 'members',
       icon: <TeamOutlined />,
@@ -63,7 +73,7 @@ function App() {
       case 'dashboard':
         return <Dashboard />;
       case 'transactions':
-        return <TransactionsList />;
+        return isAdmin ? <TransactionsList /> : <Dashboard />;
       case 'members':
         return <MembersList />;
       case 'yearly-schedule':

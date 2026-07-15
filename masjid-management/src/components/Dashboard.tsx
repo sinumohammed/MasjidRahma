@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, Row, Col, Statistic, Spin, Alert, Button, Modal, DatePicker, Tooltip } from 'antd';
-import { WalletOutlined, ArrowUpOutlined, ArrowDownOutlined, PlusOutlined } from '@ant-design/icons';
+import { WalletOutlined, ArrowUpOutlined, ArrowDownOutlined, PlusOutlined, LockOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { getSummary, type Summary } from '../services/api';
 import TransactionForm from './TransactionForm';
@@ -17,7 +17,7 @@ export default function Dashboard() {
   const { currencySymbol } = useSettings();
   const { isAdmin } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(isAdmin);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [chartsRefreshKey, setChartsRefreshKey] = useState(0);
@@ -41,6 +41,13 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    if (!isAdmin) {
+      setSummary(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const fetchSummary = async () => {
       try {
         setLoading(true);
@@ -59,9 +66,9 @@ export default function Dashboard() {
     // Refresh every 5 minutes
     const interval = setInterval(fetchSummary, 300000);
     return () => clearInterval(interval);
-  }, [dateRange]);
+  }, [dateRange, isAdmin]);
 
-  if (loading) {
+  if (isAdmin && loading) {
     return (
       <div className="dashboard-loading">
         <Spin size="large" tip="Loading dashboard..." />
@@ -69,7 +76,7 @@ export default function Dashboard() {
     );
   }
 
-  if (error) {
+  if (isAdmin && error) {
     return (
       <Alert
         message="Error Loading Dashboard"
@@ -87,19 +94,19 @@ export default function Dashboard() {
   return (
     <>
       <div className="dashboard-container">
-        <div className="dashboard-header">
-          <div className="dashboard-header-controls">
-            <RangePicker
-              value={dateRange}
-              format={DATE_FORMAT}
-              allowClear={false}
-              onChange={(range) => {
-                if (range && range[0] && range[1]) {
-                  setDateRange([range[0], range[1]]);
-                }
-              }}
-            />
-            {isAdmin && (
+        {isAdmin && (
+          <div className="dashboard-header">
+            <div className="dashboard-header-controls">
+              <RangePicker
+                value={dateRange}
+                format={DATE_FORMAT}
+                allowClear={false}
+                onChange={(range) => {
+                  if (range && range[0] && range[1]) {
+                    setDateRange([range[0], range[1]]);
+                  }
+                }}
+              />
               <Tooltip title="Add Transaction">
                 <Button
                   type="primary"
@@ -110,9 +117,9 @@ export default function Dashboard() {
                   className="dashboard-add-btn"
                 />
               </Tooltip>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         <Row gutter={[24, 24]} className="dashboard-grid" style={{ marginBottom: '24px' }}>
           <Col xs={24}>
@@ -120,6 +127,15 @@ export default function Dashboard() {
           </Col>
         </Row>
 
+        {!isAdmin && (
+          <div className="dashboard-login-prompt">
+            <LockOutlined />
+            <span>Log in as an admin to explore financial details, charts, and more.</span>
+          </div>
+        )}
+
+        {isAdmin && (
+        <>
         <Row gutter={[24, 24]} className="dashboard-grid">
           {/* Total Income Card */}
           <Col xs={24} sm={12} lg={8}>
@@ -229,6 +245,8 @@ export default function Dashboard() {
 
         {/* Charts */}
         <ChartsPanel key={chartsRefreshKey} dateRange={rangeParams} />
+        </>
+        )}
       </div>
 
     {/* Add Transaction Modal */}
