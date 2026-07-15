@@ -6,6 +6,7 @@ import {
   SettingOutlined,
   TeamOutlined,
   CalendarOutlined,
+  WalletOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   UserOutlined,
@@ -15,6 +16,7 @@ import Dashboard from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
 import MembersList from './components/Members/MembersList';
 import YearlyScheduleView from './components/Members/YearlyScheduleView';
+import MemberDuesView from './components/Members/MemberDuesView';
 import SettingsPage from './components/SettingsPage';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
@@ -24,7 +26,8 @@ import type { MenuProps } from 'antd';
 
 function App() {
   const { theme } = useSettings();
-  const { isAdmin, username, hasAdmin, logout } = useAuth();
+  const { isAdmin, isLoggedIn, username, hasAdmin, logout } = useAuth();
+  const isMemberUser = isLoggedIn && !isAdmin;
   const [activeKey, setActiveKey] = useState<string>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -34,7 +37,10 @@ function App() {
     if (!isAdmin && activeKey === 'transactions') {
       setActiveKey('dashboard');
     }
-  }, [isAdmin, activeKey]);
+    if (!isMemberUser && activeKey === 'my-dues') {
+      setActiveKey('dashboard');
+    }
+  }, [isAdmin, isMemberUser, activeKey]);
 
   const menuItems: MenuProps['items'] = [
     {
@@ -48,6 +54,15 @@ function App() {
             key: 'transactions',
             icon: <FileTextOutlined />,
             label: 'Transactions',
+          },
+        ]
+      : []),
+    ...(isMemberUser
+      ? [
+          {
+            key: 'my-dues',
+            icon: <WalletOutlined />,
+            label: 'My Dues',
           },
         ]
       : []),
@@ -74,6 +89,8 @@ function App() {
         return <Dashboard />;
       case 'transactions':
         return isAdmin ? <TransactionsList /> : <Dashboard />;
+      case 'my-dues':
+        return isMemberUser ? <MemberDuesView /> : <Dashboard />;
       case 'members':
         return <MembersList />;
       case 'yearly-schedule':
@@ -135,7 +152,7 @@ function App() {
             Masjid Rahma
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {isAdmin ? (
+            {isLoggedIn ? (
               <>
                 <span className="app-admin-username"><UserOutlined /> {username}</span>
                 <Button className="app-header-auth-btn" icon={<LogoutOutlined />} onClick={logout}>
@@ -150,7 +167,7 @@ function App() {
                 onClick={() => setAuthModalOpen(true)}
               >
                 <span className="app-header-auth-btn-label">
-                  {hasAdmin === false ? 'Set Up Admin Account' : 'Admin Login'}
+                  {hasAdmin === false ? 'Set Up Admin Account' : 'Login'}
                 </span>
               </Button>
             )}

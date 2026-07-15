@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Form, Input, InputNumber, Button, Switch, Space, message } from 'antd';
+import { Form, Input, InputNumber, Select, Button, Switch, Space, message } from 'antd';
 import { createMember, updateMember, type Member } from '../../services/api';
 import './MemberForm.css';
 
@@ -25,6 +25,8 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
           phone: values.phone,
           memberCount: values.memberCount,
           active: values.active,
+          paymentAmount: values.paymentAmount ?? null,
+          paymentFrequency: values.paymentFrequency ?? null,
         });
         message.success('Member updated successfully!');
       } else {
@@ -33,6 +35,8 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
           address: values.address,
           phone: values.phone,
           memberCount: values.memberCount,
+          paymentAmount: values.paymentAmount ?? null,
+          paymentFrequency: values.paymentFrequency ?? null,
         });
         message.success('Member added successfully!');
       }
@@ -68,6 +72,8 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
                 phone: member.phone,
                 memberCount: member.member_count,
                 active: member.active,
+                paymentAmount: member.payment_amount ?? undefined,
+                paymentFrequency: member.payment_frequency ?? undefined,
               }
             : { active: true }
         }
@@ -113,6 +119,21 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
           ]}
         >
           <InputNumber placeholder="e.g. 4" min={1} step={1} className="form-number" />
+        </Form.Item>
+
+        <Form.Item label="Recurring Payment Amount (optional)" name="paymentAmount">
+          <InputNumber placeholder="e.g. 500" min={0} step={1} className="form-number" style={{ width: '100%' }} />
+        </Form.Item>
+
+        <Form.Item label="Payment Frequency" name="paymentFrequency">
+          <Select
+            placeholder="Select frequency"
+            allowClear
+            options={[
+              { label: 'Monthly', value: 'monthly' },
+              { label: 'Yearly', value: 'yearly' },
+            ]}
+          />
         </Form.Item>
 
         {isEditMode && (

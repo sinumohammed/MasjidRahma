@@ -81,6 +81,24 @@
   font-weight: 700;
 }
 
+.yearly-schedule-swapped-away {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.yearly-schedule-swapped-in {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background-color: rgba(37, 99, 235, 0.14);
+  color: #2563eb;
+  font-weight: 700;
+}
+
 /* Dark Theme Overrides */
 :root[data-theme='dark'] .yearly-schedule-container {
   background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
@@ -93,6 +111,15 @@
 
 :root[data-theme='dark'] .yearly-schedule-table {
   background: #1f1f1f;
+}
+
+:root[data-theme='dark'] .yearly-schedule-swapped-away {
+  color: #6b7280;
+}
+
+:root[data-theme='dark'] .yearly-schedule-swapped-in {
+  background-color: rgba(96, 165, 250, 0.22);
+  color: #93c5fd;
 }
 
 :root[data-theme='dark'] .yearly-schedule-table .ant-table-tbody > tr.yearly-schedule-today-row > td {

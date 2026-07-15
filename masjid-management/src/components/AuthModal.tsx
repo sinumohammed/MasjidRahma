@@ -22,7 +22,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
         message.success('Admin account created');
       } else {
         await login(values.username, values.password);
-        message.success('Logged in as admin');
+        message.success('Logged in');
       }
       form.resetFields();
       onClose();
@@ -35,7 +35,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
 
   return (
     <Modal
-      title={isSetupMode ? '🔐 Create Admin Account' : '🔐 Admin Login'}
+      title={isSetupMode ? '🔐 Create Admin Account' : '🔐 Login'}
       open={open}
       onCancel={onClose}
       footer={null}
@@ -43,11 +43,11 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
     >
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item
-          label="Username"
+          label={isSetupMode ? 'Username' : 'Username or Member ID (e.g. MR#012)'}
           name="username"
           rules={[{ required: true, message: 'Please enter a username' }]}
         >
-          <Input prefix={<UserOutlined />} placeholder="Username" autoFocus />
+          <Input prefix={<UserOutlined />} placeholder="Username or Member ID" autoFocus />
         </Form.Item>
         <Form.Item
           label="Password"

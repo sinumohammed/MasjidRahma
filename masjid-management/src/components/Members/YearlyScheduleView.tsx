@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Table, Button, Alert, Spin } from 'antd';
+import { Table, Button, Alert, Spin, Tooltip } from 'antd';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { getYearlySchedule, type YearlyScheduleMember } from '../../services/api';
+import { getYearlySchedule, getMasjidToday, type YearlyScheduleMember } from '../../services/api';
 import './YearlyScheduleView.css';
 
 const MONTH_LABELS = [
@@ -11,7 +11,7 @@ const MONTH_LABELS = [
 ];
 
 export default function YearlyScheduleView() {
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [year, setYear] = useState(() => getMasjidToday().year);
   const [members, setMembers] = useState<YearlyScheduleMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,13 +32,14 @@ export default function YearlyScheduleView() {
     load();
   }, [year]);
 
-  const now = new Date();
-  const isCurrentYear = year === now.getFullYear();
-  const currentMonthIndex = now.getMonth();
-  const currentDay = now.getDate();
+  const today = getMasjidToday();
+  const isCurrentYear = year === today.year;
+  const currentMonthIndex = today.monthIndex;
+  const currentDay = today.day;
 
   const isTodayRow = (record: YearlyScheduleMember) =>
-    isCurrentYear && record.months[currentMonthIndex].includes(currentDay);
+    isCurrentYear &&
+    record.months[currentMonthIndex].some((entry) => entry.day === currentDay && entry.swapped !== 'away');
 
   const columns: ColumnsType<YearlyScheduleMember> = [
     {
@@ -55,21 +56,44 @@ export default function YearlyScheduleView() {
       width: 80,
       align: 'center' as const,
       render: (_: unknown, record: YearlyScheduleMember) => {
-        if (record.months[i].length === 0) return '-';
-        if (isCurrentYear && i === currentMonthIndex && record.months[i].includes(currentDay)) {
-          return record.months[i]
-            .map((day) =>
-              day === currentDay ? (
-                <span key={day} className="yearly-schedule-today-badge">
-                  {day}
-                </span>
-              ) : (
-                <span key={day}>{day}</span>
-              )
-            )
-            .reduce((acc, el, idx) => (idx === 0 ? [el] : [...acc, ', ', el]), [] as ReactNode[]);
-        }
-        return record.months[i].join(', ');
+        const entries = record.months[i];
+        if (entries.length === 0) return '-';
+
+        const nodes = entries.map((entry) => {
+          const isToday = isCurrentYear && i === currentMonthIndex && entry.day === currentDay;
+          const className =
+            entry.swapped === 'away'
+              ? 'yearly-schedule-swapped-away'
+              : entry.swapped === 'in'
+                ? 'yearly-schedule-swapped-in'
+                : isToday
+                  ? 'yearly-schedule-today-badge'
+                  : undefined;
+          const inner = <span className={className}>{entry.day}</span>;
+
+          if (!entry.swapped) {
+            return <span key={entry.day}>{inner}</span>;
+          }
+
+          const tooltipText = entry.otherMemberName
+            ? entry.swapped === 'away'
+              ? `Swapped to ${entry.otherMemberName}`
+              : `Swapped from ${entry.otherMemberName}`
+            : entry.swapped === 'away'
+              ? 'Swapped away'
+              : 'Swapped in';
+
+          return (
+            <Tooltip key={`${entry.day}-${entry.swapped}`} title={tooltipText}>
+              {inner}
+            </Tooltip>
+          );
+        });
+
+        return nodes.reduce(
+          (acc, el, idx) => (idx === 0 ? [el] : [...acc, ', ', el]),
+          [] as ReactNode[]
+        );
       },
     })),
   ];

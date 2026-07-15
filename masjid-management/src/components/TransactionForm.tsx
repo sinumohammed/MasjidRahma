@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Form, Input, InputNumber, Button, Select, DatePicker, Space, message } from 'antd';
-import { createTransaction, updateTransaction, type Transaction } from '../services/api';
+import { createTransaction, updateTransaction, getMembers, type Transaction, type Member } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import dayjs from 'dayjs';
 import './TransactionForm.css';
@@ -15,7 +15,14 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
   const { currencySymbol } = useSettings();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
   const isEditMode = Boolean(transaction);
+
+  useEffect(() => {
+    getMembers()
+      .then((data) => setMembers(data.filter((m) => m.active)))
+      .catch(() => setMembers([]));
+  }, []);
 
   const transactionTypes = [
     { label: '💰 Income', value: 'income' },
@@ -54,6 +61,8 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
   };
 
   const selectedType = Form.useWatch('type', form);
+  const selectedCategory = Form.useWatch('category', form);
+  const memberRequired = selectedType === 'income' && selectedCategory === 'Masjid payment';
 
   const handleSubmit = async (values: any) => {
     try {
@@ -65,6 +74,7 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
         amount: values.amount,
         description: values.description || '',
         date: values.date ? values.date.toISOString() : new Date().toISOString(),
+        memberId: values.memberId || null,
       };
 
       if (isEditMode && transaction) {
@@ -102,6 +112,7 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
                 amount: transaction.amount,
                 description: transaction.description,
                 date: dayjs(transaction.date),
+                memberId: transaction.member_id ?? undefined,
               }
             : undefined
         }
@@ -130,6 +141,22 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
             options={selectedType ? categories[selectedType as keyof typeof categories] : []}
             className="form-select"
             disabled={!selectedType}
+          />
+        </Form.Item>
+
+        {/* Member (mandatory for income + Masjid payment, optional otherwise) */}
+        <Form.Item
+          label={memberRequired ? 'Member' : 'Member (Optional)'}
+          name="memberId"
+          rules={memberRequired ? [{ required: true, message: 'Please select the member this payment is for' }] : []}
+        >
+          <Select
+            placeholder="Select a member"
+            options={members.map((m) => ({ label: `${m.unique_id} - ${m.name}`, value: m.id }))}
+            className="form-select"
+            allowClear
+            showSearch
+            optionFilterProp="label"
           />
         </Form.Item>
 

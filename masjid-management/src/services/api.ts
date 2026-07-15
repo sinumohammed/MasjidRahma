@@ -2,6 +2,32 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000/api`;
 const TOKEN_KEY = 'masjid_admin_token';
 
+// Matches server/index.js's MASJID_TIMEZONE - "today" must be computed the
+// same way on the client as on the backend, or a browser in a different
+// timezone (or near a day boundary) disagrees with the server on what
+// "today" is - e.g. saving a swap for the browser's local "today" while the
+// backend's today() is already a day ahead in Kolkata.
+const MASJID_TIMEZONE = 'Asia/Kolkata';
+const masjidDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: MASJID_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+export interface MasjidToday {
+  year: number;
+  monthIndex: number;
+  day: number;
+  dateString: string;
+}
+
+export function getMasjidToday(): MasjidToday {
+  const dateString = masjidDateFormatter.format(new Date());
+  const [year, month, day] = dateString.split('-').map(Number);
+  return { year, monthIndex: month - 1, day, dateString };
+}
+
 // Type Definitions
 export interface Transaction {
   id: string;
@@ -11,6 +37,7 @@ export interface Transaction {
   description: string;
   date: string;
   created_at: string;
+  member_id: string | null;
 }
 
 export interface Summary {
@@ -34,6 +61,8 @@ export interface DateRangeParams {
 export interface AuthResponse {
   token: string;
   username: string;
+  isAdmin: boolean;
+  memberId: string | null;
 }
 
 export interface Member {
@@ -42,10 +71,26 @@ export interface Member {
   position: number;
   name: string;
   address: string;
-  phone: string;
+  phone?: string;
   member_count: number;
   active: boolean;
   created_at: string;
+  payment_amount?: number | null;
+  payment_frequency?: 'monthly' | 'yearly' | null;
+}
+
+export interface DuesInfo {
+  hasPlan: boolean;
+  expected: number | null;
+  paid: number;
+  due: number | null;
+  periodsOwed: number | null;
+}
+
+export interface MyProfile {
+  member: Member;
+  dues: DuesInfo;
+  transactions: Transaction[];
 }
 
 export interface Assignment {
@@ -55,11 +100,17 @@ export interface Assignment {
   originalMember?: Member;
 }
 
+export interface YearlyScheduleDay {
+  day: number;
+  swapped?: 'in' | 'away';
+  otherMemberName?: string;
+}
+
 export interface YearlyScheduleMember {
   id: string;
   unique_id: string;
   name: string;
-  months: number[][];
+  months: YearlyScheduleDay[][];
 }
 
 export interface YearlySchedule {
@@ -151,7 +202,7 @@ export const getCategoryStats = async (range?: DateRangeParams): Promise<Categor
 };
 
 export const createTransaction = async (
-  data: Omit<Transaction, 'id' | 'created_at'>
+  data: Omit<Transaction, 'id' | 'created_at' | 'member_id'> & { memberId?: string | null }
 ): Promise<Transaction> => {
   const response = await fetch(`${API_BASE_URL}/transactions`, {
     method: 'POST',
@@ -164,7 +215,7 @@ export const createTransaction = async (
 
 export const updateTransaction = async (
   id: string,
-  data: Partial<Transaction>
+  data: Partial<Omit<Transaction, 'member_id'>> & { memberId?: string | null }
 ): Promise<Transaction> => {
   const response = await fetch(`${API_BASE_URL}/transactions/${id}`, {
     method: 'PUT',
@@ -196,13 +247,20 @@ export const seedTransactions = async (count: number): Promise<{ message: string
 // Members / food-supply rotation API Functions
 
 export const getMembers = async (): Promise<Member[]> => {
-  const response = await fetch(`${API_BASE_URL}/members`);
+  const response = await fetch(`${API_BASE_URL}/members`, { headers: { ...authHeaders() } });
   if (!response.ok) throw new Error('Failed to fetch members');
   return response.json();
 };
 
 export const createMember = async (
-  data: { name: string; address: string; phone: string; memberCount: number }
+  data: {
+    name: string;
+    address: string;
+    phone: string;
+    memberCount: number;
+    paymentAmount?: number | null;
+    paymentFrequency?: 'monthly' | 'yearly' | null;
+  }
 ): Promise<Member> => {
   const response = await fetch(`${API_BASE_URL}/members`, {
     method: 'POST',
@@ -216,7 +274,15 @@ export const createMember = async (
 
 export const updateMember = async (
   id: string,
-  data: { name: string; address: string; phone: string; memberCount: number; active: boolean }
+  data: {
+    name: string;
+    address: string;
+    phone: string;
+    memberCount: number;
+    active: boolean;
+    paymentAmount?: number | null;
+    paymentFrequency?: 'monthly' | 'yearly' | null;
+  }
 ): Promise<Member> => {
   const response = await fetch(`${API_BASE_URL}/members/${id}`, {
     method: 'PUT',
@@ -225,6 +291,13 @@ export const updateMember = async (
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to update member');
+  return result;
+};
+
+export const getMyProfile = async (): Promise<MyProfile> => {
+  const response = await fetch(`${API_BASE_URL}/members/me`, { headers: { ...authHeaders() } });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to fetch your profile');
   return result;
 };
 
@@ -247,11 +320,18 @@ export const getYearlySchedule = async (year?: number): Promise<YearlySchedule> 
   return response.json();
 };
 
+export interface SwapResult {
+  date: string;
+  member_id: string | null;
+  reason?: string | null;
+  reverted?: boolean;
+}
+
 export const createSwap = async (
   date: string,
   memberId: string,
   reason?: string
-): Promise<{ date: string; member_id: string; reason: string | null }> => {
+): Promise<SwapResult> => {
   const response = await fetch(`${API_BASE_URL}/members/swap`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -259,6 +339,21 @@ export const createSwap = async (
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to create swap');
+  return result;
+};
+
+export const createMutualSwap = async (
+  dateA: string,
+  dateB: string,
+  reason?: string
+): Promise<{ dateA: SwapResult; dateB: SwapResult }> => {
+  const response = await fetch(`${API_BASE_URL}/members/swap/mutual`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ dateA, dateB, reason }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to create mutual swap');
   return result;
 };
 

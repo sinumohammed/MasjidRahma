@@ -65,6 +65,23 @@ async function initializeDatabase() {
   `);
   // Additive migration for members created before the phone column existed.
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''`);
+
+  // Members log in with their own users row (username = unique_id, password
+  // validated live against members.phone - no stored hash, so editing phone
+  // via the admin form updates login with no sync code). is_admin distinguishes
+  // the single admin account from member accounts in the same table.
+  await pool.query(`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT true`);
+  await pool.query(`ALTER TABLE users ALTER COLUMN is_admin SET DEFAULT false`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS member_id TEXT REFERENCES members(id)`);
+
+  // Optional recurring payment plan per member, used to compute dues.
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS payment_amount NUMERIC`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS payment_frequency TEXT`);
+
+  // Optional link from a transaction to the member it's attributed to.
+  await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS member_id TEXT REFERENCES members(id)`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS rotation_state (
       id INTEGER PRIMARY KEY DEFAULT 1,
@@ -82,6 +99,24 @@ async function initializeDatabase() {
     )
   `);
   console.log('Database tables ready');
+  await backfillMemberUsers();
+}
+
+// Creates a users row (is_admin=false) for any member that predates this
+// feature or was otherwise never paired with a login - idempotent, safe to
+// run on every boot.
+async function backfillMemberUsers() {
+  const members = await dbAll('SELECT id, unique_id FROM members');
+  for (const member of members) {
+    const existing = await dbGet('SELECT 1 FROM users WHERE member_id = $1', [member.id]);
+    if (existing) continue;
+    const usernameTaken = await dbGet('SELECT 1 FROM users WHERE username = $1', [member.unique_id]);
+    if (usernameTaken) continue;
+    await dbRun(
+      'INSERT INTO users (id, username, password_hash, is_admin, member_id) VALUES ($1, $2, NULL, false, $3)',
+      [uuidv4(), member.unique_id, member.id]
+    );
+  }
 }
 
 initializeDatabase().catch((err) => console.error('Error initializing database:', err));
@@ -102,11 +137,17 @@ async function dbGet(query, params = []) {
 }
 
 // Auth middleware
-function requireAdmin(req, res, next) {
+function getBearerToken(req) {
   const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  return authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+}
+
+// Any valid token (admin or member) - used by endpoints a logged-in member
+// may call for their own data.
+function requireAuth(req, res, next) {
+  const token = getBearerToken(req);
   if (!token) {
-    return res.status(401).json({ error: 'Admin authentication required' });
+    return res.status(401).json({ error: 'Authentication required' });
   }
   try {
     req.user = jwt.verify(token, JWT_SECRET);
@@ -114,6 +155,15 @@ function requireAdmin(req, res, next) {
   } catch (err) {
     res.status(401).json({ error: 'Invalid or expired token' });
   }
+}
+
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    next();
+  });
 }
 
 // Build an optional WHERE clause for date-range filtering
@@ -146,6 +196,20 @@ function todayInMasjidTimezone() {
   return todayFormatter.format(new Date());
 }
 
+// Year/month parts of a date in the masjid's timezone - used for dues math,
+// which needs calendar-month granularity, not just a date string. Reading
+// year/month with plain getUTC*() would disagree with this near midnight
+// (Kolkata is always ahead of UTC), so every "which month is this in" check
+// must go through this same Intl-based conversion.
+function getMasjidYearMonth(date) {
+  const [year, month] = todayFormatter.format(date).split('-').map(Number);
+  return { year, monthIndex: month - 1 };
+}
+
+function getMasjidTodayParts() {
+  return getMasjidYearMonth(new Date());
+}
+
 function formatDateOnly(date) {
   return date.toISOString().slice(0, 10);
 }
@@ -158,6 +222,22 @@ function daysBetweenDates(fromDateStr, toDateStr) {
 
 async function getActiveMembersOrdered() {
   return dbAll('SELECT * FROM members WHERE active = true ORDER BY position ASC');
+}
+
+// Computes a member's recurring-payment standing. `today` is
+// { year, monthIndex } in the masjid's timezone. The current in-progress
+// month/year already counts as owed (matches "pay at start of period").
+function calculateDues(member, paid, today) {
+  if (member.payment_amount == null || !member.payment_frequency) {
+    return { hasPlan: false, expected: null, paid, due: null, periodsOwed: null };
+  }
+  const start = getMasjidYearMonth(new Date(member.created_at));
+  const rawMonthsElapsed = (today.year - start.year) * 12 + (today.monthIndex - start.monthIndex) + 1;
+  const monthsElapsed = Math.max(rawMonthsElapsed, 0);
+  const periodsOwed =
+    member.payment_frequency === 'monthly' ? monthsElapsed : Math.ceil(monthsElapsed / 12);
+  const expected = Number(member.payment_amount) * periodsOwed;
+  return { hasPlan: true, expected, paid, due: expected - paid, periodsOwed };
 }
 
 async function ensureRotationState() {
@@ -234,6 +314,82 @@ function computeMemberIdForDate(cycleStartDate, cycleMemberIds, targetDateStr) {
   return cycleMemberIds[idx];
 }
 
+// Builds the rotation context needed to resolve a boundary-aware computed
+// member id for any date - shared by getYearlySchedule() and the swap
+// handlers so a pending membership change (added/removed active member,
+// current cycle not yet naturally rolled over) is projected consistently
+// everywhere, not just in the yearly view.
+async function getRotationProjectionContext() {
+  const rawState = await ensureRotationState();
+  const state = await advanceRotationIfNeeded(rawState);
+  const currentCycleMemberIds = JSON.parse(state.cycle_member_ids);
+  const currentCycleStart = state.cycle_start_date;
+
+  const activeMembers = await getActiveMembersOrdered();
+  const fullActiveIds = activeMembers.map((m) => m.id);
+
+  // If a member has been added/removed but the in-progress cycle hasn't hit
+  // its natural boundary yet, project the same continuity-preserving merge
+  // that advanceRotationIfNeeded() will apply once that boundary is reached.
+  const membershipMatches =
+    currentCycleMemberIds.length === fullActiveIds.length &&
+    fullActiveIds.every((id) => currentCycleMemberIds.includes(id));
+
+  let boundaryDateStr = null;
+  let projectedCycleMemberIds = null;
+  if (!membershipMatches) {
+    const boundaryDateObj = new Date(currentCycleStart + 'T00:00:00Z');
+    boundaryDateObj.setUTCDate(boundaryDateObj.getUTCDate() + currentCycleMemberIds.length);
+    boundaryDateStr = formatDateOnly(boundaryDateObj);
+
+    const survivors = currentCycleMemberIds.filter((id) => fullActiveIds.includes(id));
+    const newcomers = fullActiveIds.filter((id) => !currentCycleMemberIds.includes(id));
+    projectedCycleMemberIds = [...survivors, ...newcomers];
+  }
+
+  return {
+    state,
+    currentCycleMemberIds,
+    currentCycleStart,
+    activeMembers,
+    boundaryDateStr,
+    projectedCycleMemberIds,
+  };
+}
+
+function resolveComputedMemberId(ctx, dateStr) {
+  return ctx.boundaryDateStr && dateStr >= ctx.boundaryDateStr
+    ? computeMemberIdForDate(ctx.boundaryDateStr, ctx.projectedCycleMemberIds, dateStr)
+    : computeMemberIdForDate(ctx.currentCycleStart, ctx.currentCycleMemberIds, dateStr);
+}
+
+// Returns whoever is currently assigned to a date - the override's member if
+// one exists, otherwise the boundary-aware computed rotation member.
+async function getCurrentAssignedMemberId(ctx, dateStr) {
+  const computedId = resolveComputedMemberId(ctx, dateStr);
+  const override = await dbGet('SELECT * FROM schedule_overrides WHERE date = $1', [dateStr]);
+  return override ? override.member_id : computedId;
+}
+
+// Creates, replaces, or (if memberId matches the boundary-aware computed
+// rotation member) clears the override for a date - the single source of
+// truth for "assign this date to this member" used by both the one-time
+// swap endpoint and the mutual-swap endpoint.
+async function applySwapOverride(ctx, dateStr, memberId, reason) {
+  const computedId = resolveComputedMemberId(ctx, dateStr);
+  if (memberId === computedId) {
+    await dbRun('DELETE FROM schedule_overrides WHERE date = $1', [dateStr]);
+    return { date: dateStr, member_id: null, reverted: true };
+  }
+
+  await dbRun(
+    `INSERT INTO schedule_overrides (date, member_id, reason) VALUES ($1, $2, $3)
+     ON CONFLICT (date) DO UPDATE SET member_id = EXCLUDED.member_id, reason = EXCLUDED.reason`,
+    [dateStr, memberId, reason || null]
+  );
+  return dbGet('SELECT * FROM schedule_overrides WHERE date = $1', [dateStr]);
+}
+
 // Returns today's food-supply assignment, applying any one-time swap override.
 async function getTodaysAssignment() {
   const rawState = await ensureRotationState();
@@ -249,7 +405,7 @@ async function getTodaysAssignment() {
   const computedMember = await dbGet('SELECT * FROM members WHERE id = $1', [computedId]);
   const override = await dbGet('SELECT * FROM schedule_overrides WHERE date = $1', [todayStr]);
 
-  if (override) {
+  if (override && override.member_id !== computedId) {
     const overrideMember = await dbGet('SELECT * FROM members WHERE id = $1', [override.member_id]);
     return { date: todayStr, member: overrideMember, swapped: true, originalMember: computedMember };
   }
@@ -276,7 +432,7 @@ async function getSchedulePreview(days) {
 
     const computedId = computeMemberIdForDate(state.cycle_start_date, cycleMemberIds, targetDateStr);
     const overrideMemberId = overrideByDate.get(targetDateStr);
-    const swapped = Boolean(overrideMemberId);
+    const swapped = Boolean(overrideMemberId) && overrideMemberId !== computedId;
     const member = swapped ? membersById.get(overrideMemberId) : (computedId ? membersById.get(computedId) : null);
     const originalMember = swapped && computedId ? membersById.get(computedId) : undefined;
 
@@ -294,39 +450,15 @@ async function getSchedulePreview(days) {
 // do in real time when that boundary is actually reached. It does not
 // reconstruct genuine past history if the active member list changed earlier.
 async function getYearlySchedule(year) {
-  const rawState = await ensureRotationState();
-  const state = await advanceRotationIfNeeded(rawState);
-  const currentCycleMemberIds = JSON.parse(state.cycle_member_ids);
-  const currentCycleStart = state.cycle_start_date;
-
-  const activeMembers = await getActiveMembersOrdered();
-  const fullActiveIds = activeMembers.map((m) => m.id);
-
-  // If a member has been added/removed but the in-progress cycle hasn't hit
-  // its natural boundary yet, project the same continuity-preserving merge
-  // that advanceRotationIfNeeded() will apply once that boundary is reached,
-  // so future months in this projection already reflect it.
-  const membershipMatches =
-    currentCycleMemberIds.length === fullActiveIds.length &&
-    fullActiveIds.every((id) => currentCycleMemberIds.includes(id));
-
-  let boundaryDateStr = null;
-  let projectedCycleMemberIds = null;
-  if (!membershipMatches) {
-    const boundaryDateObj = new Date(currentCycleStart + 'T00:00:00Z');
-    boundaryDateObj.setUTCDate(boundaryDateObj.getUTCDate() + currentCycleMemberIds.length);
-    boundaryDateStr = formatDateOnly(boundaryDateObj);
-
-    const survivors = currentCycleMemberIds.filter((id) => fullActiveIds.includes(id));
-    const newcomers = fullActiveIds.filter((id) => !currentCycleMemberIds.includes(id));
-    projectedCycleMemberIds = [...survivors, ...newcomers];
-  }
+  const ctx = await getRotationProjectionContext();
+  const { activeMembers } = ctx;
 
   const overrides = await dbAll(
     'SELECT * FROM schedule_overrides WHERE date >= $1 AND date <= $2',
     [`${year}-01-01`, `${year}-12-31`]
   );
   const overrideByDate = new Map(overrides.map((o) => [o.date, o.member_id]));
+  const memberNameById = new Map(activeMembers.map((m) => [m.id, m.name]));
 
   const monthsByMemberId = new Map(
     activeMembers.map((m) => [m.id, Array.from({ length: 12 }, () => [])])
@@ -339,16 +471,33 @@ async function getYearlySchedule(year) {
     const dateObj = new Date(Date.UTC(year, 0, 1));
     dateObj.setUTCDate(dateObj.getUTCDate() + d);
     const dateStr = formatDateOnly(dateObj);
+    const day = dateObj.getUTCDate();
+    const month = dateObj.getUTCMonth();
 
-    const computedId = boundaryDateStr && dateStr >= boundaryDateStr
-      ? computeMemberIdForDate(boundaryDateStr, projectedCycleMemberIds, dateStr)
-      : computeMemberIdForDate(currentCycleStart, currentCycleMemberIds, dateStr);
+    const computedId = resolveComputedMemberId(ctx, dateStr);
 
     const overrideMemberId = overrideByDate.get(dateStr);
-    const assignedId = overrideMemberId || computedId;
-    const months = assignedId && monthsByMemberId.get(assignedId);
-    if (months) {
-      months[dateObj.getUTCMonth()].push(dateObj.getUTCDate());
+    const isSwap = Boolean(overrideMemberId) && overrideMemberId !== computedId;
+    const assignedId = isSwap ? overrideMemberId : computedId;
+
+    const assignedMonths = assignedId && monthsByMemberId.get(assignedId);
+    if (assignedMonths) {
+      assignedMonths[month].push({
+        day,
+        swapped: isSwap ? 'in' : undefined,
+        otherMemberName: isSwap ? memberNameById.get(computedId) : undefined,
+      });
+    }
+
+    if (isSwap) {
+      const originalMonths = monthsByMemberId.get(computedId);
+      if (originalMonths) {
+        originalMonths[month].push({
+          day,
+          swapped: 'away',
+          otherMemberName: memberNameById.get(assignedId),
+        });
+      }
     }
   }
 
@@ -368,7 +517,7 @@ async function getYearlySchedule(year) {
 // Auth: check whether an admin account has been created yet
 app.get('/api/auth/status', async (req, res) => {
   try {
-    const row = await dbGet('SELECT COUNT(*) as count FROM users');
+    const row = await dbGet('SELECT COUNT(*) as count FROM users WHERE is_admin = true');
     res.json({ hasAdmin: Number(row.count) > 0 });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -382,24 +531,27 @@ app.post('/api/auth/setup', async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
-    const existing = await dbGet('SELECT COUNT(*) as count FROM users');
+    const existing = await dbGet('SELECT COUNT(*) as count FROM users WHERE is_admin = true');
     if (Number(existing.count) > 0) {
       return res.status(409).json({ error: 'An admin account already exists' });
     }
     const id = uuidv4();
     const passwordHash = await bcrypt.hash(password, 10);
     await dbRun(
-      'INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)',
+      'INSERT INTO users (id, username, password_hash, is_admin) VALUES ($1, $2, $3, true)',
       [id, username, passwordHash]
     );
-    const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '7d' });
-    res.status(201).json({ token, username });
+    const token = jwt.sign({ id, username, isAdmin: true, memberId: null }, JWT_SECRET, { expiresIn: '7d' });
+    res.status(201).json({ token, username, isAdmin: true, memberId: null });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Auth: admin login
+// Auth: unified login for the admin account and member self-service accounts.
+// Members log in with their unique_id as username and their current phone
+// number as password (validated live against members.phone, not a stored
+// hash) - editing phone via the admin form updates their login automatically.
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -407,11 +559,27 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
     const user = await dbGet('SELECT * FROM users WHERE username = $1', [username]);
-    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    if (!user) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username });
+
+    if (user.is_admin) {
+      if (!user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+      }
+    } else {
+      const member = await dbGet('SELECT * FROM members WHERE id = $1', [user.member_id]);
+      if (!member || !member.active || !member.phone || member.phone.trim() === '' || password !== member.phone) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+      }
+    }
+
+    const token = jwt.sign(
+      { id: user.id, username: user.username, isAdmin: user.is_admin, memberId: user.member_id || null },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.json({ token, username: user.username, isAdmin: user.is_admin, memberId: user.member_id || null });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -517,18 +685,21 @@ app.get('/api/transactions/category/stats', async (req, res) => {
 // Create new transaction
 app.post('/api/transactions', requireAdmin, async (req, res) => {
   try {
-    const { type, category, amount, description, date } = req.body;
+    const { type, category, amount, description, date, memberId } = req.body;
 
     if (!type || !category || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (type === 'income' && category === 'Masjid payment' && !memberId) {
+      return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
     }
 
     const id = uuidv4();
     const transactionDate = date || new Date().toISOString();
 
     await dbRun(
-      'INSERT INTO transactions (id, type, category, amount, description, date) VALUES ($1, $2, $3, $4, $5, $6)',
-      [id, type, category, amount, description || '', transactionDate]
+      'INSERT INTO transactions (id, type, category, amount, description, date, member_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [id, type, category, amount, description || '', transactionDate, memberId || null]
     );
 
     const newTransaction = await dbGet('SELECT * FROM transactions WHERE id = $1', [id]);
@@ -542,15 +713,19 @@ app.post('/api/transactions', requireAdmin, async (req, res) => {
 app.put('/api/transactions/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { type, category, amount, description, date } = req.body;
+    const { type, category, amount, description, date, memberId } = req.body;
 
     if (!type || !category || !amount || !date) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+    if (type === 'income' && category === 'Masjid payment' && !memberId) {
+      return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
+    }
 
     const result = await dbRun(
-      'UPDATE transactions SET type = $1, category = $2, amount = $3, description = $4, date = $5 WHERE id = $6',
-      [type, category, amount, description || '', date, id]
+      `UPDATE transactions SET type = $1, category = $2, amount = $3, description = $4, date = $5, member_id = $6
+       WHERE id = $7`,
+      [type, category, amount, description || '', date, memberId || null, id]
     );
 
     if (result.rowCount === 0) {
@@ -634,6 +809,12 @@ app.delete('/api/transactions/:id', requireAdmin, async (req, res) => {
 });
 
 // Get all members (homes)
+const PAYMENT_FREQUENCIES = ['monthly', 'yearly'];
+
+function validatePaymentFrequency(paymentFrequency) {
+  return paymentFrequency == null || PAYMENT_FREQUENCIES.includes(paymentFrequency);
+}
+
 app.get('/api/members', async (req, res) => {
   try {
     const members = await dbAll('SELECT * FROM members ORDER BY position ASC');
@@ -643,10 +824,11 @@ app.get('/api/members', async (req, res) => {
   }
 });
 
-// Create a new member (home)
+// Create a new member (home) - also creates the paired login (users row) so
+// the member can log in with their unique_id + phone immediately.
 app.post('/api/members', requireAdmin, async (req, res) => {
   try {
-    const { name, address, phone, memberCount } = req.body;
+    const { name, address, phone, memberCount, paymentAmount, paymentFrequency } = req.body;
 
     if (!name || !address || !phone || !memberCount) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -654,16 +836,40 @@ app.post('/api/members', requireAdmin, async (req, res) => {
     if (!Number.isInteger(memberCount) || memberCount < 1) {
       return res.status(400).json({ error: 'memberCount must be a positive integer' });
     }
+    if (!validatePaymentFrequency(paymentFrequency)) {
+      return res.status(400).json({ error: 'paymentFrequency must be "monthly" or "yearly"' });
+    }
 
     const id = uuidv4();
     const maxPositionRow = await dbGet('SELECT COALESCE(MAX(position), 0) as max_position FROM members');
     const position = Number(maxPositionRow.max_position) + 1;
     const uniqueId = `MR#${String(position).padStart(3, '0')}`;
 
-    await dbRun(
-      'INSERT INTO members (id, unique_id, position, name, address, phone, member_count) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [id, uniqueId, position, name, address, phone, memberCount]
-    );
+    let client;
+    try {
+      client = await pool.connect();
+    } catch (connectError) {
+      return res.status(500).json({ error: connectError.message });
+    }
+
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO members (id, unique_id, position, name, address, phone, member_count, payment_amount, payment_frequency)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [id, uniqueId, position, name, address, phone, memberCount, paymentAmount ?? null, paymentFrequency ?? null]
+      );
+      await client.query(
+        'INSERT INTO users (id, username, password_hash, is_admin, member_id) VALUES ($1, $2, NULL, false, $3)',
+        [uuidv4(), uniqueId, id]
+      );
+      await client.query('COMMIT');
+    } catch (txError) {
+      await client.query('ROLLBACK');
+      throw txError;
+    } finally {
+      client.release();
+    }
 
     const newMember = await dbGet('SELECT * FROM members WHERE id = $1', [id]);
     res.status(201).json(newMember);
@@ -676,7 +882,7 @@ app.post('/api/members', requireAdmin, async (req, res) => {
 app.put('/api/members/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, address, phone, memberCount, active } = req.body;
+    const { name, address, phone, memberCount, active, paymentAmount, paymentFrequency } = req.body;
 
     if (!name || !address || !phone || !memberCount) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -684,10 +890,14 @@ app.put('/api/members/:id', requireAdmin, async (req, res) => {
     if (!Number.isInteger(memberCount) || memberCount < 1) {
       return res.status(400).json({ error: 'memberCount must be a positive integer' });
     }
+    if (!validatePaymentFrequency(paymentFrequency)) {
+      return res.status(400).json({ error: 'paymentFrequency must be "monthly" or "yearly"' });
+    }
 
     const result = await dbRun(
-      'UPDATE members SET name = $1, address = $2, phone = $3, member_count = $4, active = $5 WHERE id = $6',
-      [name, address, phone, memberCount, active !== false, id]
+      `UPDATE members SET name = $1, address = $2, phone = $3, member_count = $4, active = $5,
+       payment_amount = $6, payment_frequency = $7 WHERE id = $8`,
+      [name, address, phone, memberCount, active !== false, paymentAmount ?? null, paymentFrequency ?? null, id]
     );
 
     if (result.rowCount === 0) {
@@ -696,6 +906,34 @@ app.put('/api/members/:id', requireAdmin, async (req, res) => {
 
     const updated = await dbGet('SELECT * FROM members WHERE id = $1', [id]);
     res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// A member's own profile, dues standing, and full tagged transaction history.
+// Scoped strictly to the logged-in member's own id via the token - never a
+// URL/query param - so one member can't view another's dues.
+app.get('/api/members/me', requireAuth, async (req, res) => {
+  try {
+    if (req.user.isAdmin || !req.user.memberId) {
+      return res.status(403).json({ error: 'Not a member account' });
+    }
+    const member = await dbGet('SELECT * FROM members WHERE id = $1', [req.user.memberId]);
+    if (!member) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    const paidRow = await dbGet(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+       WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'`,
+      [member.id]
+    );
+    const transactions = await dbAll(
+      'SELECT * FROM transactions WHERE member_id = $1 ORDER BY date DESC',
+      [member.id]
+    );
+    const dues = calculateDues(member, Number(paidRow.total), getMasjidTodayParts());
+    res.json({ member, dues, transactions });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -748,14 +986,42 @@ app.post('/api/members/swap', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Member not found' });
     }
 
-    await dbRun(
-      `INSERT INTO schedule_overrides (date, member_id, reason) VALUES ($1, $2, $3)
-       ON CONFLICT (date) DO UPDATE SET member_id = EXCLUDED.member_id, reason = EXCLUDED.reason`,
-      [date, memberId, reason || null]
-    );
+    const ctx = await getRotationProjectionContext();
+    const result = await applySwapOverride(ctx, date, memberId, reason);
+    res.status(result.reverted ? 200 : 201).json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-    const override = await dbGet('SELECT * FROM schedule_overrides WHERE date = $1', [date]);
-    res.status(201).json(override);
+// Swap two dates' assignments with each other in one action - whoever is
+// currently on duty (override or computed) on dateA and dateB trade places.
+app.post('/api/members/swap/mutual', requireAdmin, async (req, res) => {
+  try {
+    const { dateA, dateB, reason } = req.body;
+
+    if (!dateA || !dateB) {
+      return res.status(400).json({ error: 'dateA and dateB are required' });
+    }
+    if (dateA === dateB) {
+      return res.status(400).json({ error: 'Choose two different dates' });
+    }
+
+    const ctx = await getRotationProjectionContext();
+    const memberA = await getCurrentAssignedMemberId(ctx, dateA);
+    const memberB = await getCurrentAssignedMemberId(ctx, dateB);
+
+    if (!memberA || !memberB) {
+      return res.status(400).json({ error: 'Could not determine current assignees for the selected dates' });
+    }
+    if (memberA === memberB) {
+      return res.status(400).json({ error: 'Both dates are already assigned to the same home' });
+    }
+
+    const resultA = await applySwapOverride(ctx, dateA, memberB, reason);
+    const resultB = await applySwapOverride(ctx, dateB, memberA, reason);
+
+    res.status(201).json({ dateA: resultA, dateB: resultB });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
