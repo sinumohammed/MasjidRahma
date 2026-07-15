@@ -569,7 +569,18 @@ app.post('/api/auth/login', async (req, res) => {
       }
     } else {
       const member = await dbGet('SELECT * FROM members WHERE id = $1', [user.member_id]);
-      if (!member || !member.active || !member.phone || member.phone.trim() === '' || password !== member.phone) {
+      if (!member || !member.active) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+      }
+      // Members log in against their phone number by default, but once they've
+      // set a custom password via change-password, that hash takes over - a
+      // member who changes their password shouldn't be locked out just because
+      // the admin later edits their phone number on file.
+      if (user.password_hash) {
+        if (!(await bcrypt.compare(password, user.password_hash))) {
+          return res.status(401).json({ error: 'Invalid username or password' });
+        }
+      } else if (!member.phone || member.phone.trim() === '' || password !== member.phone) {
         return res.status(401).json({ error: 'Invalid username or password' });
       }
     }
@@ -585,8 +596,10 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Auth: change password (must be logged in, must know current password)
-app.post('/api/auth/change-password', requireAdmin, async (req, res) => {
+// Auth: change password (any logged-in user - admin or member - must know
+// current password). For a member who hasn't set a custom password yet,
+// "current password" is their phone number (their default login).
+app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
@@ -596,7 +609,17 @@ app.post('/api/auth/change-password', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'New password must be at least 6 characters' });
     }
     const user = await dbGet('SELECT * FROM users WHERE id = $1', [req.user.id]);
-    if (!user || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+    if (!user) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    let currentValid = false;
+    if (user.password_hash) {
+      currentValid = await bcrypt.compare(currentPassword, user.password_hash);
+    } else if (!user.is_admin) {
+      const member = await dbGet('SELECT * FROM members WHERE id = $1', [user.member_id]);
+      currentValid = !!member && member.active && !!member.phone && currentPassword === member.phone;
+    }
+    if (!currentValid) {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
     const passwordHash = await bcrypt.hash(newPassword, 10);

@@ -40,7 +40,7 @@ function toCsv(rows: Record<string, unknown>[]) {
 
 export default function SettingsPage() {
   const { theme, setTheme, currency, setCurrency } = useSettings();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isLoggedIn } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordForm] = Form.useForm();
@@ -119,7 +119,7 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      {isAdmin && (
+      {isLoggedIn && (
         <Collapse
           className="settings-card"
           bordered={false}
@@ -134,6 +134,11 @@ export default function SettingsPage() {
                   onFinish={handleChangePassword}
                   style={{ maxWidth: 360 }}
                 >
+                  {!isAdmin && (
+                    <p className="settings-row-hint" style={{ marginTop: -8, marginBottom: 16 }}>
+                      If you haven't changed your password before, your current password is your phone number.
+                    </p>
+                  )}
                   <Form.Item
                     label="Current Password"
                     name="currentPassword"
