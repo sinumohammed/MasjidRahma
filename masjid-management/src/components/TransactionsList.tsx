@@ -17,15 +17,19 @@ import {
   EditOutlined,
   DeleteOutlined,
   SearchOutlined,
+  PrinterOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   getTransactions,
   deleteTransaction,
+  getMembers,
   type Transaction,
+  type Member,
 } from '../services/api';
 import TransactionForm from './TransactionForm';
+import TransactionReceipt from './TransactionReceipt';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
 import './TransactionsList.css';
@@ -36,6 +40,7 @@ export default function TransactionsList() {
   const { currencySymbol } = useSettings();
   const { isAdmin } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +51,7 @@ export default function TransactionsList() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | undefined>();
+  const [receiptTransaction, setReceiptTransaction] = useState<Transaction | undefined>();
 
   const loadTransactions = async () => {
     try {
@@ -62,7 +68,12 @@ export default function TransactionsList() {
 
   useEffect(() => {
     loadTransactions();
+    getMembers()
+      .then(setMembers)
+      .catch(() => setMembers([]));
   }, []);
+
+  const membersById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
   const categories = useMemo(
     () => Array.from(new Set(transactions.map((t) => t.category))).sort(),
@@ -94,6 +105,10 @@ export default function TransactionsList() {
   const handleEditClick = (record: Transaction) => {
     setEditingTransaction(record);
     setIsModalOpen(true);
+  };
+
+  const handlePrintReceiptClick = (record: Transaction) => {
+    setReceiptTransaction(record);
   };
 
   const handleFormSuccess = () => {
@@ -162,6 +177,14 @@ export default function TransactionsList() {
             width: 120,
             render: (_: unknown, record: Transaction) => (
               <Space>
+                {record.type === 'income' && (
+                  <Button
+                    icon={<PrinterOutlined />}
+                    size="small"
+                    title="Print Receipt"
+                    onClick={() => handlePrintReceiptClick(record)}
+                  />
+                )}
                 <Button
                   icon={<EditOutlined />}
                   size="small"
@@ -276,6 +299,27 @@ export default function TransactionsList() {
             setEditingTransaction(undefined);
           }}
         />
+      </Modal>
+
+      <Modal
+        title={null}
+        open={!!receiptTransaction}
+        onCancel={() => setReceiptTransaction(undefined)}
+        footer={null}
+        width={560}
+        styles={{ body: { padding: 0 } }}
+        className="receipt-modal"
+      >
+        {receiptTransaction && (
+          <TransactionReceipt
+            transaction={receiptTransaction}
+            member={
+              receiptTransaction.member_id
+                ? membersById.get(receiptTransaction.member_id)
+                : undefined
+            }
+          />
+        )}
       </Modal>
     </div>
   );

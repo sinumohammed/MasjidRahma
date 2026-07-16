@@ -1,0 +1,139 @@
+.receipt-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 24px 0;
+}
+
+.receipt-paper {
+  max-width: 480px;
+  margin: 24px auto;
+  padding: 32px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #1f2937;
+}
+
+.receipt-header {
+  text-align: center;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #667eea;
+}
+
+.receipt-masjid-name {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.receipt-subtitle {
+  margin-top: 4px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.receipt-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+.receipt-meta-label {
+  display: block;
+  color: #6b7280;
+}
+
+.receipt-meta-value {
+  display: block;
+  font-weight: 600;
+}
+
+.receipt-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 16px 0;
+}
+
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.receipt-row-label {
+  color: #6b7280;
+  flex: 0 0 auto;
+}
+
+.receipt-row-value {
+  font-weight: 600;
+  text-align: right;
+}
+
+.receipt-amount-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.receipt-amount-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #16a34a;
+}
+
+.receipt-footer {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.receipt-generated {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+:root[data-theme='dark'] .receipt-paper {
+  background: #1f1f1f;
+  border-color: #333;
+  color: #e5e7eb;
+}
+
+/* Isolate the receipt when printing: hide everything else on the page
+   (app sidebar/header, modal mask, toolbar button) so only the receipt
+   paper is sent to the printer / Save as PDF output. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .receipt-print-area,
+  .receipt-print-area * {
+    visibility: visible;
+  }
+
+  .receipt-print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+
+  .receipt-toolbar {
+    display: none;
+  }
+
+  .receipt-paper {
+    margin: 0 auto;
+    border: none;
+    box-shadow: none;
+  }
+}
