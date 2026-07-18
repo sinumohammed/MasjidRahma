@@ -16,7 +16,7 @@ import Dashboard from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
 import MembersList from './components/Members/MembersList';
 import YearlyScheduleView from './components/Members/YearlyScheduleView';
-import MemberDuesView from './components/Members/MemberDuesView';
+import ProfileView from './components/Members/ProfileView';
 import SettingsPage from './components/SettingsPage';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
@@ -27,7 +27,6 @@ import type { MenuProps } from 'antd';
 function App() {
   const { theme } = useSettings();
   const { isAdmin, isLoggedIn, username, hasAdmin, logout } = useAuth();
-  const isMemberUser = isLoggedIn && !isAdmin;
   const [activeKey, setActiveKey] = useState<string>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -37,10 +36,10 @@ function App() {
     if (!isAdmin && activeKey === 'transactions') {
       setActiveKey('dashboard');
     }
-    if (!isMemberUser && activeKey === 'my-dues') {
+    if (!isLoggedIn && activeKey === 'profile') {
       setActiveKey('dashboard');
     }
-  }, [isAdmin, isMemberUser, activeKey]);
+  }, [isAdmin, isLoggedIn, activeKey]);
 
   const menuItems: MenuProps['items'] = [
     {
@@ -57,12 +56,12 @@ function App() {
           },
         ]
       : []),
-    ...(isMemberUser
+    ...(isLoggedIn
       ? [
           {
-            key: 'my-dues',
+            key: 'profile',
             icon: <WalletOutlined />,
-            label: 'My Dues',
+            label: 'Profile',
           },
         ]
       : []),
@@ -89,8 +88,8 @@ function App() {
         return <Dashboard />;
       case 'transactions':
         return isAdmin ? <TransactionsList /> : <Dashboard />;
-      case 'my-dues':
-        return isMemberUser ? <MemberDuesView /> : <Dashboard />;
+      case 'profile':
+        return isLoggedIn ? <ProfileView /> : <Dashboard />;
       case 'members':
         return <MembersList />;
       case 'yearly-schedule':

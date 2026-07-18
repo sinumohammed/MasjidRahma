@@ -227,17 +227,76 @@ async function getActiveMembersOrdered() {
 // Computes a member's recurring-payment standing. `today` is
 // { year, monthIndex } in the masjid's timezone. The current in-progress
 // month/year already counts as owed (matches "pay at start of period").
+// Monthly plans are always reckoned from January of the current year
+// (periodsOwed = months elapsed so far this year), matching the Jan-Dec
+// monthly breakdown table (buildMonthlyBreakdown) - not from the member's
+// actual join date, so a member who joined mid-year is still expected to
+// have "caught up" on the months before they joined. Yearly plans are
+// unaffected and still count lifetime periods since the member's join date.
 function calculateDues(member, paid, today) {
   if (member.payment_amount == null || !member.payment_frequency) {
     return { hasPlan: false, expected: null, paid, due: null, periodsOwed: null };
   }
-  const start = getMasjidYearMonth(new Date(member.created_at));
-  const rawMonthsElapsed = (today.year - start.year) * 12 + (today.monthIndex - start.monthIndex) + 1;
-  const monthsElapsed = Math.max(rawMonthsElapsed, 0);
-  const periodsOwed =
-    member.payment_frequency === 'monthly' ? monthsElapsed : Math.ceil(monthsElapsed / 12);
+  let periodsOwed;
+  if (member.payment_frequency === 'monthly') {
+    periodsOwed = today.monthIndex + 1;
+  } else {
+    const start = getMasjidYearMonth(new Date(member.created_at));
+    const rawMonthsElapsed = (today.year - start.year) * 12 + (today.monthIndex - start.monthIndex) + 1;
+    const monthsElapsed = Math.max(rawMonthsElapsed, 0);
+    periodsOwed = Math.ceil(monthsElapsed / 12);
+  }
   const expected = Number(member.payment_amount) * periodsOwed;
   return { hasPlan: true, expected, paid, due: expected - paid, periodsOwed };
+}
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Full current-year (Jan-Dec) month-by-month breakdown for monthly-plan
+// members, always spanning the whole year regardless of when the member
+// actually joined. Coverage is cumulative and counted from January of the
+// current year, not tied to which month a payment landed in: if `paid`
+// covers N months' worth of dues (floor(paid / payment_amount)), the first N
+// months of the year are marked paid, regardless of which specific month(s)
+// the payments were actually recorded against - so paying ahead of schedule
+// shows future months as paid too (an advance). Every month gets one of
+// three statuses:
+//   - 'paid': covered by cumulative payments (past, current, or future/advance)
+//   - 'missed': not covered, and its month has already started (<= today)
+//   - 'nil': not covered, and it's still in the future - paying ahead is the
+//            member's choice, so an unpaid future month isn't "missed" yet
+// The "Amount Due" figure itself (calculateDues) is unaffected by this and
+// still counts only the months elapsed since the member's actual join date.
+function buildMonthlyBreakdown(member, paid, today) {
+  if (member.payment_frequency !== 'monthly') return null;
+  const monthlyAmount = Number(member.payment_amount);
+  const coveredMonths = monthlyAmount > 0 ? Math.floor(paid / monthlyAmount) : 0;
+
+  const entries = [];
+  for (let m = 0; m <= 11; m++) {
+    const status = m < coveredMonths ? 'paid' : m <= today.monthIndex ? 'missed' : 'nil';
+    entries.push({ year: today.year, monthIndex: m, label: MONTH_LABELS[m], status });
+  }
+  return entries;
+}
+
+// Shared payload builder for both a member viewing their own profile and an
+// admin viewing a member's profile via the admin-only lookup route.
+async function buildMemberProfilePayload(member) {
+  const paidRow = await dbGet(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+     WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'`,
+    [member.id]
+  );
+  const transactions = await dbAll(
+    'SELECT * FROM transactions WHERE member_id = $1 ORDER BY date DESC',
+    [member.id]
+  );
+  const today = getMasjidTodayParts();
+  const paid = Number(paidRow.total);
+  const dues = calculateDues(member, paid, today);
+  const monthlyBreakdown = buildMonthlyBreakdown(member, paid, today);
+  return { member, dues, monthlyBreakdown, transactions, currentYear: today.year };
 }
 
 async function ensureRotationState() {
@@ -946,17 +1005,20 @@ app.get('/api/members/me', requireAuth, async (req, res) => {
     if (!member) {
       return res.status(404).json({ error: 'Member not found' });
     }
-    const paidRow = await dbGet(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'`,
-      [member.id]
-    );
-    const transactions = await dbAll(
-      'SELECT * FROM transactions WHERE member_id = $1 ORDER BY date DESC',
-      [member.id]
-    );
-    const dues = calculateDues(member, Number(paidRow.total), getMasjidTodayParts());
-    res.json({ member, dues, transactions });
+    res.json(await buildMemberProfilePayload(member));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin-only: view any member's profile/dues exactly as that member would see it.
+app.get('/api/members/:id/profile', requireAdmin, async (req, res) => {
+  try {
+    const member = await dbGet('SELECT * FROM members WHERE id = $1', [req.params.id]);
+    if (!member) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    res.json(await buildMemberProfilePayload(member));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

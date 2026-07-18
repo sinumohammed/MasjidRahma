@@ -87,10 +87,19 @@ export interface DuesInfo {
   periodsOwed: number | null;
 }
 
+export interface MonthlyDueEntry {
+  year: number;
+  monthIndex: number;
+  label: string;
+  status: 'paid' | 'missed' | 'nil';
+}
+
 export interface MyProfile {
   member: Member;
   dues: DuesInfo;
+  monthlyBreakdown: MonthlyDueEntry[] | null;
   transactions: Transaction[];
+  currentYear: number;
 }
 
 export interface Assignment {
@@ -298,6 +307,13 @@ export const getMyProfile = async (): Promise<MyProfile> => {
   const response = await fetch(`${API_BASE_URL}/members/me`, { headers: { ...authHeaders() } });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to fetch your profile');
+  return result;
+};
+
+export const getMemberProfile = async (memberId: string): Promise<MyProfile> => {
+  const response = await fetch(`${API_BASE_URL}/members/${memberId}/profile`, { headers: { ...authHeaders() } });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to fetch member profile');
   return result;
 };
 

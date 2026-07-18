@@ -6,6 +6,7 @@ import { getSummary, type Summary } from '../services/api';
 import TransactionForm from './TransactionForm';
 import ChartsPanel from './ChartsPanel';
 import TodayAssignmentCard from './Members/TodayAssignmentCard';
+import ProfileView from './Members/ProfileView';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
@@ -15,7 +16,7 @@ const DATE_FORMAT = 'YYYY-MM-DD';
 
 export default function Dashboard() {
   const { currencySymbol } = useSettings();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isLoggedIn } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(isAdmin);
   const [error, setError] = useState<string | null>(null);
@@ -127,12 +128,14 @@ export default function Dashboard() {
           </Col>
         </Row>
 
-        {!isAdmin && (
+        {!isAdmin && !isLoggedIn && (
           <div className="dashboard-login-prompt">
             <LockOutlined />
             <span>Log in as an admin to explore financial details, charts, and more.</span>
           </div>
         )}
+
+        {!isAdmin && isLoggedIn && <ProfileView variant="embedded" />}
 
         {isAdmin && (
         <>
