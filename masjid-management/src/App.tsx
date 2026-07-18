@@ -17,20 +17,41 @@ import TransactionsList from './components/TransactionsList';
 import MembersList from './components/Members/MembersList';
 import YearlyScheduleView from './components/Members/YearlyScheduleView';
 import ProfileView from './components/Members/ProfileView';
+import MemberAvatar from './components/Members/MemberAvatar';
 import SettingsPage from './components/SettingsPage';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
 import { useAuth } from './context/AuthContext';
+import { getMyProfile } from './services/api';
 import './App.css';
 import type { MenuProps } from 'antd';
 
 function App() {
   const { theme } = useSettings();
-  const { isAdmin, isLoggedIn, username, hasAdmin, logout } = useAuth();
+  const { isAdmin, isLoggedIn, memberId, username, hasAdmin, logout } = useAuth();
   const [activeKey, setActiveKey] = useState<string>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [memberUniqueId, setMemberUniqueId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isLoggedIn || isAdmin || !memberId) {
+      setMemberUniqueId(null);
+      return;
+    }
+    let ignore = false;
+    getMyProfile()
+      .then((profile) => {
+        if (!ignore) setMemberUniqueId(profile.member.unique_id);
+      })
+      .catch(() => {
+        if (!ignore) setMemberUniqueId(null);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [isLoggedIn, isAdmin, memberId]);
 
   useEffect(() => {
     if (!isAdmin && activeKey === 'transactions') {
@@ -153,7 +174,14 @@ function App() {
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isLoggedIn ? (
               <>
-                <span className="app-admin-username"><UserOutlined /> {username}</span>
+                <span className="app-admin-username">
+                  {!isAdmin && memberUniqueId ? (
+                    <MemberAvatar key={memberUniqueId} uniqueId={memberUniqueId} size={22} className="app-header-avatar" />
+                  ) : (
+                    <UserOutlined />
+                  )}{' '}
+                  {username}
+                </span>
                 <Button className="app-header-auth-btn" icon={<LogoutOutlined />} onClick={logout}>
                   <span className="app-header-auth-btn-label">Logout</span>
                 </Button>

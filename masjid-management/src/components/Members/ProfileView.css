@@ -9,41 +9,62 @@
   margin-top: 24px;
 }
 
-.profile-view-title {
-  font-size: 32px;
-  font-weight: bold;
-  color: #1f2937;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  margin: 0 0 24px 0;
-}
-
 .profile-view-loading {
   display: flex;
   justify-content: center;
   padding: 60px 0;
 }
 
-.profile-view-card,
-.profile-view-selector-card {
+.profile-view-card {
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   margin-bottom: 16px;
 }
 
-.profile-view-selector-card {
+.profile-view-header-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 16px;
   flex-wrap: wrap;
-}
-
-.profile-view-selector-label {
-  font-weight: 500;
+  margin-bottom: 16px;
 }
 
 .profile-view-selector {
   min-width: 260px;
+  margin-left: auto;
+}
+
+.profile-view-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.profile-view-avatar.member-avatar-icon,
+.profile-view-avatar.member-avatar-photo {
+  border: 2px solid rgba(0, 0, 0, 0.08);
+}
+
+.profile-view-header-name {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.profile-view-header-id {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+:root[data-theme='dark'] .profile-view-header-name {
+  color: #e5e7eb;
+}
+
+:root[data-theme='dark'] .profile-view-avatar.member-avatar-icon,
+:root[data-theme='dark'] .profile-view-avatar.member-avatar-photo {
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 /* Dark Theme Overrides */
@@ -51,13 +72,7 @@
   background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
 }
 
-:root[data-theme='dark'] .profile-view-title {
-  color: #e5e7eb;
-  text-shadow: none;
-}
-
-:root[data-theme='dark'] .profile-view-card,
-:root[data-theme='dark'] .profile-view-selector-card {
+:root[data-theme='dark'] .profile-view-card {
   background: #1f1f1f;
 }
 
@@ -67,17 +82,7 @@
     padding: 16px;
   }
 
-  .profile-view-title {
-    font-size: 22px;
-  }
-
   .profile-view-selector {
     min-width: 100%;
-  }
-}
-
-@media (max-width: 400px) {
-  .profile-view-title {
-    font-size: 18px;
   }
 }

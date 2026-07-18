@@ -1,0 +1,21 @@
+.member-avatar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+}
+
+.member-avatar-photo {
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme='dark'] .member-avatar-icon,
+:root[data-theme='dark'] .member-avatar-photo {
+  background: rgba(255, 255, 255, 0.12);
+}

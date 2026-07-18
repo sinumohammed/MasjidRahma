@@ -12,6 +12,7 @@ import {
 } from '../../services/api';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
+import MemberAvatar from './MemberAvatar';
 import './ProfileView.css';
 
 interface ProfileViewProps {
@@ -30,7 +31,10 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
   useEffect(() => {
     if (isAdmin) {
       getMembers()
-        .then(setMembers)
+        .then((data) => {
+          setMembers(data);
+          setSelectedMemberId((current) => current ?? data[0]?.id);
+        })
         .catch(() => setMembers([]));
     }
   }, [isAdmin]);
@@ -124,11 +128,17 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
 
   return (
     <div className={containerClass}>
-      {variant === 'page' && <h1 className="profile-view-title">👤 Profile</h1>}
-
-      {isAdmin && (
-        <Card className="profile-view-selector-card">
-          <span className="profile-view-selector-label">View member profile:</span>
+      <div className="profile-view-header-row">
+        {profile && (
+          <div className="profile-view-header">
+            <MemberAvatar key={profile.member.unique_id} uniqueId={profile.member.unique_id} size={72} className="profile-view-avatar" />
+            <div className="profile-view-header-info">
+              <div className="profile-view-header-name">{profile.member.name}</div>
+              <div className="profile-view-header-id">{profile.member.unique_id}</div>
+            </div>
+          </div>
+        )}
+        {isAdmin && (
           <Select
             className="profile-view-selector"
             placeholder="Select a member"
@@ -139,8 +149,8 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
             onChange={(value) => setSelectedMemberId(value)}
             options={members.map((m) => ({ value: m.id, label: `${m.name} (${m.unique_id})` }))}
           />
-        </Card>
-      )}
+        )}
+      </div>
 
       {error && <Alert message="Error" description={error} type="error" showIcon style={{ marginBottom: 16 }} />}
 

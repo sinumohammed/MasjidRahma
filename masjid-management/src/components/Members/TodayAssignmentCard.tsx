@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, Tag, Button, Modal, Select, DatePicker, Radio, Space, message, Spin, Tooltip } from 'antd';
-import { HomeOutlined, SwapOutlined, PhoneOutlined, UndoOutlined } from '@ant-design/icons';
+import { SwapOutlined, PhoneOutlined, UndoOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   getTodayAssignment,
@@ -14,41 +14,13 @@ import {
   type Member,
 } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import MemberAvatar from './MemberAvatar';
 import './TodayAssignmentCard.css';
 
 // The masjid's "today" (Asia/Kolkata), not the browser's local "today" - a
 // swap saved under the browser's local date can silently miss the date the
 // backend/dashboard actually treat as today when they differ.
 const masjidTodayDayjs = () => dayjs(getMasjidToday().dateString);
-
-function MemberAvatar({ uniqueId }: { uniqueId: string }) {
-  const [ext, setExt] = useState<'png' | 'jpg' | null>('png');
-
-  useEffect(() => {
-    setExt('png');
-  }, [uniqueId]);
-
-  if (!ext) {
-    return (
-      <div className="today-assignment-icon">
-        <HomeOutlined />
-      </div>
-    );
-  }
-
-  // '#' (as in 'MR#001') breaks static asset lookups even when percent-encoded,
-  // so the file naming convention strips all non-alphanumeric characters.
-  const fileName = uniqueId.replace(/[^a-zA-Z0-9]/g, '');
-
-  return (
-    <img
-      src={`/assets/members/${fileName}.${ext}`}
-      alt={uniqueId}
-      className="today-assignment-photo"
-      onError={() => setExt(ext === 'png' ? 'jpg' : null)}
-    />
-  );
-}
 
 type ModalMode = 'swap' | 'mutual' | 'set-current';
 
@@ -167,7 +139,12 @@ export default function TodayAssignmentCard() {
           <div className="today-assignment-empty">No active members set up yet.</div>
         ) : (
           <div className="today-assignment-body">
-            <MemberAvatar uniqueId={assignment.member.unique_id} />
+            <MemberAvatar
+              key={assignment.member.unique_id}
+              uniqueId={assignment.member.unique_id}
+              size={56}
+              className="today-assignment-avatar"
+            />
             <div className="today-assignment-info">
               <div className="today-assignment-heading">
                 <span className="today-assignment-label">Food Today</span>

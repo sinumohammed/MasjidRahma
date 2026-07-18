@@ -2,8 +2,36 @@
 
 **Status**: ✅ Deployed to production (see [DEPLOYMENT.md](DEPLOYMENT.md) for live URLs and hosting details)
 **Created**: 2026-07-12
-**Last Updated**: 2026-07-13
-**Purpose**: Islamic financial management system for income/expense tracking with analytics
+**Last Updated**: 2026-07-18
+**Purpose**: Islamic financial management system for income/expense tracking, member food-supply rotation, and member dues tracking
+
+---
+
+## 🆕 RECENT UPDATES (2026-07-18)
+
+### Member payment/dues report, renamed "My Dues" → "Profile"
+`MemberDuesView.tsx` was replaced by `src/components/Members/ProfileView.tsx`, a unified component used both as its own nav page ("Profile", renamed from "My Dues") and embedded inline on the `Dashboard` below `TodayAssignmentCard` for logged-in non-admin members.
+
+- **Monthly-plan members** get a full Jan-Dec table for the current year (always all 12 months, regardless of when the member actually joined). Each month is one of three statuses:
+  - `paid` - covered by cumulative payments (coverage is amount-based, not tied to which month a payment was recorded against - e.g. a single ₹600 payment against a ₹200/month plan covers 3 months starting from the earliest unpaid one)
+  - `missed` - the month has already started and isn't covered
+  - `nil` - a future month that isn't covered (paying ahead is the member's choice, so it isn't "missed" yet)
+  - Coverage is always counted from January of the current year (`buildMonthlyBreakdown` in `server/index.js`), not the member's join date - a mid-year joiner is still expected to "catch up" on earlier months.
+- **Yearly-plan members** get a list of the current year's `Masjid payment` transactions (date + amount) instead of the monthly grid.
+- A single **Credit Balance** stat (`paid - expected`) replaces the old separate "Amount Due"/"Credit Balance" toggle - shown as a signed number, red when negative (owed), green when positive.
+- **Admins** get access to the same Profile page (previously member-only) with a member-picker `Select` (defaults to the first member, right-aligned next to the member name/avatar header) that renders any member's profile exactly as that member would see it, via a new admin-only endpoint.
+- Backend: `buildMemberProfilePayload(member)` in `server/index.js` is shared by `GET /api/members/me` (self, scoped via JWT) and the new `GET /api/members/:id/profile` (admin-only via `requireAdmin`).
+
+### Member avatar (photo) support
+New shared component `src/components/Members/MemberAvatar.tsx` (+ `.css`) resolves a member's photo from `/assets/members/{unique_id-with-punctuation-stripped}.{png,jpg,jpeg}` (tried in that order), falling back to a generic person icon (`UserOutlined` by default, overridable via `fallbackIcon` prop) if none of the three extensions load. Used in:
+- `TodayAssignmentCard.tsx` (56px, replacing its old locally-defined avatar logic - now falls back to the same generic icon as everywhere else, not a home icon)
+- `ProfileView.tsx` (72px, header row alongside the admin member-picker)
+- `App.tsx` header (22px, replacing the generic user icon for non-admin members only; admins keep the generic icon)
+
+Callers must pass `key={uniqueId}` so React remounts the component (rather than updating it in place) when the member changes, avoiding a stale-icon flash mid-switch.
+
+### Settings page Help section
+`SettingsPage.tsx` gained a "Help" card with masjid committee and muaddin contact numbers (tap-to-call `tel:` links), plus a site-related-queries contact. Visible to everyone (Settings isn't admin-gated).
 
 ---
 
@@ -228,6 +256,26 @@ POST /api/transactions/seed
 Body: { count?: number }  // 1-500, default 50
 Response: { message: "Seeded N transactions" }
 ```
+
+### Members & Food-Supply Rotation
+```
+GET  /api/members                     → Member[] (public)
+POST /api/members                     → (admin) create a member
+PUT  /api/members/:id                 → (admin) update a member
+
+GET  /api/members/me                  → (member, self only) { member, dues, monthlyBreakdown, transactions, currentYear }
+GET  /api/members/:id/profile         → (admin only) same shape as /me, for any member - powers the admin "view as member" picker
+
+GET  /api/members/today               → Assignment (today's food-supply home, public)
+GET  /api/members/schedule?days=N     → Assignment[] (public preview, 1-60 days)
+GET  /api/members/yearly-schedule?year=YYYY → YearlySchedule (public)
+POST /api/members/swap                → (admin) one-time swap override for a date
+POST /api/members/swap/mutual         → (admin) swap two dates with each other
+POST /api/members/set-current         → (admin) fast-forward rotation to a member
+DELETE /api/members/swap/:date        → (admin) revert a date's override
+```
+
+`GET /api/members/me` and `GET /api/members/:id/profile` share a `buildMemberProfilePayload(member)` helper in `server/index.js`. `dues` comes from `calculateDues()` (expected vs. paid, based on `Masjid payment`/`income` transactions tagged to the member). `monthlyBreakdown` is only populated for `payment_frequency: 'monthly'` members (see `buildMonthlyBreakdown()`); yearly-plan members get `monthlyBreakdown: null` and the frontend derives a payments list from `transactions` instead.
 
 ---
 
@@ -500,5 +548,5 @@ For production URLs and deployment steps, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
-**Last Updated**: 2026-07-13
+**Last Updated**: 2026-07-18
 **App Status**: ✅ Deployed to production (Vercel + Render + Neon) — see [DEPLOYMENT.md](DEPLOYMENT.md)

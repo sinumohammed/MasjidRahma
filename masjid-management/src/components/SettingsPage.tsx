@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Card, Switch, Select, Button, message, Space, Divider, Alert, Form, Input, Collapse } from 'antd';
+import { Card, Switch, Select, Button, message, Space, Divider, Alert, Form, Input, Collapse, Row, Col } from 'antd';
 import {
   BulbOutlined,
   DownloadOutlined,
   MoonOutlined,
   LockOutlined,
+  QuestionCircleOutlined,
+  PhoneOutlined,
 } from '@ant-design/icons';
 import { getTransactions, changePassword } from '../services/api';
 import { useSettings, CURRENCY_SYMBOLS, type CurrencyCode } from '../context/SettingsContext';
@@ -19,6 +21,38 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+interface Contact {
+  name: string;
+  phone: string | null;
+}
+
+const COMMITTEE_CONTACTS: Contact[] = [
+  { name: 'Moideen Kutty', phone: '9539 602 550' },
+  { name: 'Kunjan Pynat', phone: '9846 006 759' },
+];
+
+const MUADDIN_CONTACTS: Contact[] = [
+  { name: 'Muaddin', phone: '9745 283 681' },
+  { name: 'Muaddin 2', phone: null },
+];
+
+const SITE_QUERY_CONTACT: Contact = { name: 'Sinu', phone: '9947 500 525' };
+
+function ContactRow({ name, phone }: Contact) {
+  return (
+    <div className="settings-contact-row">
+      <span className="settings-contact-name">{name}</span>
+      {phone ? (
+        <a href={`tel:${phone.replace(/\s+/g, '')}`} className="settings-contact-phone">
+          <PhoneOutlined /> {phone}
+        </a>
+      ) : (
+        <span className="settings-contact-phone settings-contact-nil">Nil</span>
+      )}
+    </div>
+  );
 }
 
 function toCsv(rows: Record<string, unknown>[]) {
@@ -202,6 +236,28 @@ export default function SettingsPage() {
         ) : (
           <Alert message="Log in as admin to use this feature" type="info" showIcon />
         )}
+      </Card>
+
+      <Card title={<span><QuestionCircleOutlined /> Help</span>} className="settings-card" bordered={false}>
+        <Row gutter={[24, 16]}>
+          <Col xs={24} sm={12}>
+            <div className="settings-row-label">Masjid Committee</div>
+            {COMMITTEE_CONTACTS.map((contact) => (
+              <ContactRow key={contact.name} {...contact} />
+            ))}
+          </Col>
+          <Col xs={24} sm={12}>
+            <div className="settings-row-label">Muaddin</div>
+            {MUADDIN_CONTACTS.map((contact) => (
+              <ContactRow key={contact.name} {...contact} />
+            ))}
+          </Col>
+        </Row>
+
+        <Divider />
+
+        <div className="settings-row-label">Site Related Queries</div>
+        <ContactRow {...SITE_QUERY_CONTACT} />
       </Card>
     </div>
   );

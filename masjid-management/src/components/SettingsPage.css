@@ -39,6 +39,35 @@
   margin-top: 2px;
 }
 
+.settings-card .settings-row-label {
+  margin-bottom: 10px;
+}
+
+.settings-contact-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.settings-contact-name {
+  color: #374151;
+}
+
+.settings-contact-phone {
+  color: inherit;
+  white-space: nowrap;
+}
+
+.settings-contact-nil {
+  color: #8c8c8c;
+}
+
+:root[data-theme='dark'] .settings-contact-name {
+  color: #d9d9d9;
+}
+
 @media (max-width: 768px) {
   .settings-container {
     padding: 16px;
