@@ -111,13 +111,64 @@
    (app sidebar/header, modal mask, toolbar button) so only the receipt
    paper is sent to the printer / Save as PDF output. */
 @media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    height: auto !important;
+  }
+
   body * {
     visibility: hidden;
+  }
+
+  /* The Modal (and therefore the receipt) renders into a portal that's a
+     SIBLING of #root directly under <body>, not a descendant of it. So
+     `visibility: hidden` alone leaves the entire app tree under #root -
+     sidebar, dashboard, charts, everything - still occupying its full
+     (often multi-viewport-tall) layout height, positioned before the modal
+     portal in document order. That pushed the receipt down past page 1
+     (leaving it blank) and partway into page 2. Removing #root from flow
+     entirely fixes both. */
+  #root {
+    display: none !important;
   }
 
   .receipt-print-area,
   .receipt-print-area * {
     visibility: visible;
+  }
+
+  /* The receipt is rendered inside an antd Modal, whose wrapper is
+     position: fixed (and, on mobile, also scaled/transformed and padded
+     for the responsive layout). Fixed-position ancestors get re-painted on
+     every page some browsers' print engines generate for the (still
+     layout-occupying, if invisible) rest of the document - that's what
+     was printing the receipt twice. Forcing the modal chrome to plain
+     static flow removes the duplication and the mobile-only misalignment
+     in one go, since the receipt's own centering (.receipt-paper's
+     margin: 0 auto) then has a normal, untransformed container to center
+     within. */
+  .ant-modal-root,
+  .ant-modal-mask,
+  .ant-modal-wrap,
+  .ant-modal,
+  .ant-modal-content {
+    position: static !important;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
+    overflow: visible !important;
+    height: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    background: none !important;
   }
 
   .receipt-print-area {
@@ -132,6 +183,8 @@
   }
 
   .receipt-paper {
+    max-width: 480px;
+    width: 100%;
     margin: 0 auto;
     border: none;
     box-shadow: none;
