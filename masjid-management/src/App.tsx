@@ -12,7 +12,7 @@ import {
   UserOutlined,
   LogoutOutlined,
 } from '@ant-design/icons';
-import Dashboard from './components/Dashboard';
+import Dashboard, { type TransactionFilter } from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
 import MembersList from './components/Members/MembersList';
 import YearlyScheduleView from './components/Members/YearlyScheduleView';
@@ -34,6 +34,12 @@ function App() {
   const [isMobile, setIsMobile] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [memberUniqueId, setMemberUniqueId] = useState<string | null>(null);
+  const [transactionsFilter, setTransactionsFilter] = useState<TransactionFilter | null>(null);
+
+  const navigateToTransactions = (filter: TransactionFilter) => {
+    setTransactionsFilter(filter);
+    setActiveKey('transactions');
+  };
 
   useEffect(() => {
     if (!isLoggedIn || isAdmin || !memberId) {
@@ -106,9 +112,16 @@ function App() {
   const renderContent = () => {
     switch (activeKey) {
       case 'dashboard':
-        return <Dashboard />;
+        return <Dashboard onNavigateToTransactions={navigateToTransactions} />;
       case 'transactions':
-        return isAdmin ? <TransactionsList /> : <Dashboard />;
+        return isAdmin ? (
+          <TransactionsList
+            initialTypeFilter={transactionsFilter?.type}
+            initialCategoryFilter={transactionsFilter?.category}
+          />
+        ) : (
+          <Dashboard onNavigateToTransactions={navigateToTransactions} />
+        );
       case 'profile':
         return isLoggedIn ? <ProfileView /> : <Dashboard />;
       case 'members':
@@ -123,6 +136,7 @@ function App() {
   };
 
   const handleMenuClick: MenuProps['onClick'] = (e) => {
+    if (e.key === 'transactions') setTransactionsFilter(null);
     setActiveKey(e.key);
     if (isMobile) setCollapsed(true);
   };

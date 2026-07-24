@@ -1,9 +1,22 @@
-import { useEffect, useState } from 'react';
-import { Card, Row, Col, Statistic, Spin, Alert, Button, Modal, DatePicker, Tooltip } from 'antd';
-import { WalletOutlined, ArrowUpOutlined, ArrowDownOutlined, PlusOutlined, LockOutlined } from '@ant-design/icons';
-import dayjs, { Dayjs } from 'dayjs';
-import { getSummary, type Summary } from '../services/api';
-import TransactionForm from './TransactionForm';
+import { useEffect, useMemo, useState } from 'react';
+import { Row, Col, Spin, Alert, Modal } from 'antd';
+import {
+  WalletOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
+  BankOutlined,
+  TeamOutlined,
+  LockOutlined,
+} from '@ant-design/icons';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+import { getSummary, getCategoryStats, type Summary, type CategoryStat } from '../services/api';
 import ChartsPanel from './ChartsPanel';
 import TodayAssignmentCard from './Members/TodayAssignmentCard';
 import ProfileView from './Members/ProfileView';
@@ -11,50 +24,45 @@ import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
-const { RangePicker } = DatePicker;
-const DATE_FORMAT = 'YYYY-MM-DD';
+const MASJID_PAYMENT_CATEGORY = 'Masjid payment';
+const IMAM_SALARY_CATEGORY = 'Imam Salary';
+const STAFF_SALARY_CATEGORY = 'Staff Salary';
+const SALARY_COLORS = ['#4a3aa7', '#eb6834'];
 
-export default function Dashboard() {
+export interface TransactionFilter {
+  type?: 'income' | 'expense';
+  category?: string;
+}
+
+interface DashboardProps {
+  onNavigateToTransactions?: (filter: TransactionFilter) => void;
+}
+
+export default function Dashboard({ onNavigateToTransactions }: DashboardProps) {
   const { currencySymbol } = useSettings();
   const { isAdmin, isLoggedIn } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
   const [loading, setLoading] = useState(isAdmin);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [chartsRefreshKey, setChartsRefreshKey] = useState(0);
-  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(1, 'year'), dayjs()]);
-
-  const rangeParams = {
-    startDate: dateRange[0].format(DATE_FORMAT),
-    endDate: dateRange[1].format(DATE_FORMAT),
-  };
-
-  const handleAddTransactionSuccess = async () => {
-    setIsModalOpen(false);
-    // Refresh summary data after adding transaction
-    try {
-      const data = await getSummary(rangeParams);
-      setSummary(data);
-    } catch (err) {
-      console.error('Error refreshing summary:', err);
-    }
-    setChartsRefreshKey((key) => key + 1);
-  };
+  const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isAdmin) {
       setSummary(null);
+      setCategoryStats([]);
       setLoading(false);
       setError(null);
       return;
     }
 
-    const fetchSummary = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await getSummary(rangeParams);
-        setSummary(data);
+        const [summaryData, statsData] = await Promise.all([getSummary(), getCategoryStats()]);
+        setSummary(summaryData);
+        setCategoryStats(statsData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load summary');
         console.error('Error loading summary:', err);
@@ -63,11 +71,28 @@ export default function Dashboard() {
       }
     };
 
-    fetchSummary();
+    fetchData();
     // Refresh every 5 minutes
-    const interval = setInterval(fetchSummary, 300000);
+    const interval = setInterval(fetchData, 300000);
     return () => clearInterval(interval);
-  }, [dateRange, isAdmin]);
+  }, [isAdmin]);
+
+  const findCategoryTotal = (category: string, type: 'income' | 'expense') =>
+    categoryStats.find((s) => s.category === category && s.type === type)?.total || 0;
+
+  const masjidPaymentTotal = findCategoryTotal(MASJID_PAYMENT_CATEGORY, 'income');
+  const imamSalaryTotal = findCategoryTotal(IMAM_SALARY_CATEGORY, 'expense');
+  const staffSalaryOnlyTotal = findCategoryTotal(STAFF_SALARY_CATEGORY, 'expense');
+  const staffSalaryCombinedTotal = imamSalaryTotal + staffSalaryOnlyTotal;
+
+  const salaryDonutData = useMemo(
+    () =>
+      [
+        { category: IMAM_SALARY_CATEGORY, total: imamSalaryTotal },
+        { category: STAFF_SALARY_CATEGORY, total: staffSalaryOnlyTotal },
+      ].filter((entry) => entry.total > 0),
+    [imamSalaryTotal, staffSalaryOnlyTotal]
+  );
 
   if (isAdmin && loading) {
     return (
@@ -92,36 +117,18 @@ export default function Dashboard() {
   const balance = summary?.balance || 0;
   const isPositive = balance >= 0;
 
+  const navigate = (filter: TransactionFilter) => {
+    onNavigateToTransactions?.(filter);
+  };
+
+  const handleSalarySliceClick = (category: string) => {
+    setIsSalaryModalOpen(false);
+    navigate({ type: 'expense', category });
+  };
+
   return (
     <>
       <div className="dashboard-container">
-        {isAdmin && (
-          <div className="dashboard-header">
-            <div className="dashboard-header-controls">
-              <RangePicker
-                value={dateRange}
-                format={DATE_FORMAT}
-                allowClear={false}
-                onChange={(range) => {
-                  if (range && range[0] && range[1]) {
-                    setDateRange([range[0], range[1]]);
-                  }
-                }}
-              />
-              <Tooltip title="Add Transaction">
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  size="large"
-                  shape="circle"
-                  onClick={() => setIsModalOpen(true)}
-                  className="dashboard-add-btn"
-                />
-              </Tooltip>
-            </div>
-          </div>
-        )}
-
         <Row gutter={[24, 24]} className="dashboard-grid" style={{ marginBottom: '24px' }}>
           <Col xs={24}>
             <TodayAssignmentCard />
@@ -138,136 +145,129 @@ export default function Dashboard() {
         {!isAdmin && isLoggedIn && <ProfileView variant="embedded" />}
 
         {isAdmin && (
-        <>
-        <Row gutter={[24, 24]} className="dashboard-grid">
-          {/* Total Income Card */}
-          <Col xs={24} sm={12} lg={8}>
-            <Card 
-              className="summary-card income-card"
-              hoverable
-              bordered={false}
-            >
-              <div className="card-icon income-icon">
-                <ArrowUpOutlined />
+          <>
+            {/* Compact stat tiles */}
+            <div className="stat-tile-row">
+              <div
+                className="stat-tile income-tile clickable"
+                onClick={() => navigate({ type: 'income' })}
+              >
+                <div className="stat-tile-icon income-icon">
+                  <ArrowUpOutlined />
+                </div>
+                <div className="stat-tile-body">
+                  <span className="stat-tile-label">Total Income</span>
+                  <span className="stat-tile-value income-value">
+                    {currencySymbol}
+                    {(summary?.totalIncome || 0).toFixed(2)}
+                  </span>
+                </div>
               </div>
-              <Statistic
-                title="Total Income"
-                value={summary?.totalIncome || 0}
-                prefix={currencySymbol}
-                precision={2}
-                valueStyle={{ color: '#52c41a', fontSize: '28px', fontWeight: 'bold' }}
-              />
-              <div className="card-footer">Contributing funds</div>
-            </Card>
-          </Col>
 
-          {/* Total Expense Card */}
-          <Col xs={24} sm={12} lg={8}>
-            <Card 
-              className="summary-card expense-card"
-              hoverable
-              bordered={false}
-            >
-              <div className="card-icon expense-icon">
-                <ArrowDownOutlined />
+              <div
+                className="stat-tile expense-tile clickable"
+                onClick={() => navigate({ type: 'expense' })}
+              >
+                <div className="stat-tile-icon expense-icon">
+                  <ArrowDownOutlined />
+                </div>
+                <div className="stat-tile-body">
+                  <span className="stat-tile-label">Total Expenses</span>
+                  <span className="stat-tile-value expense-value">
+                    {currencySymbol}
+                    {(summary?.totalExpense || 0).toFixed(2)}
+                  </span>
+                </div>
               </div>
-              <Statistic
-                title="Total Expenses"
-                value={summary?.totalExpense || 0}
-                prefix={currencySymbol}
-                precision={2}
-                valueStyle={{ color: '#f5222d', fontSize: '28px', fontWeight: 'bold' }}
-              />
-              <div className="card-footer">Outgoing funds</div>
-            </Card>
-          </Col>
 
-          {/* Balance Card */}
-          <Col xs={24} sm={12} lg={8}>
-            <Card 
-              className={`summary-card balance-card ${isPositive ? 'positive' : 'negative'}`}
-              hoverable
-              bordered={false}
-            >
-              <div className={`card-icon balance-icon ${isPositive ? 'positive' : 'negative'}`}>
-                <WalletOutlined />
+              <div className={`stat-tile balance-tile ${isPositive ? 'positive' : 'negative'}`}>
+                <div className={`stat-tile-icon balance-icon ${isPositive ? 'positive' : 'negative'}`}>
+                  <WalletOutlined />
+                </div>
+                <div className="stat-tile-body">
+                  <span className="stat-tile-label">Current Balance</span>
+                  <span className={`stat-tile-value balance-value ${isPositive ? 'positive' : 'negative'}`}>
+                    {currencySymbol}
+                    {balance.toFixed(2)}
+                  </span>
+                </div>
               </div>
-              <Statistic
-                title="Current Balance"
-                value={balance}
-                prefix={currencySymbol}
-                precision={2}
-                valueStyle={{ 
-                  color: isPositive ? '#1890ff' : '#f5222d', 
-                  fontSize: '28px', 
-                  fontWeight: 'bold' 
-                }}
-              />
-              <div className="card-footer">
-                {isPositive ? 'Healthy surplus' : 'Deficit'}
+
+              <div
+                className="stat-tile masjid-tile clickable"
+                onClick={() => navigate({ type: 'income', category: MASJID_PAYMENT_CATEGORY })}
+              >
+                <div className="stat-tile-icon masjid-icon">
+                  <BankOutlined />
+                </div>
+                <div className="stat-tile-body">
+                  <span className="stat-tile-label">Total Masjid Payment</span>
+                  <span className="stat-tile-value masjid-value">
+                    {currencySymbol}
+                    {masjidPaymentTotal.toFixed(2)}
+                  </span>
+                </div>
               </div>
-            </Card>
-          </Col>
-        </Row>
 
-        {/* Quick Stats */}
-        <Row gutter={[24, 24]} className="dashboard-grid" style={{ marginTop: '40px' }}>
-          <Col xs={24}>
-            <Card 
-              title="💡 Quick Statistics"
-              className="stats-card"
-              bordered={false}
-            >
-              <Row gutter={[16, 16]}>
-                <Col xs={24} sm={12}>
-                  <div className="stat-item">
-                    <span className="stat-label">Savings Rate</span>
-                    <span className="stat-value">
-                      {summary && summary.totalIncome > 0
-                        ? ((summary.balance / summary.totalIncome) * 100).toFixed(1)
-                        : 0}
-                      %
-                    </span>
-                  </div>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <div className="stat-item">
-                    <span className="stat-label">Expense Ratio</span>
-                    <span className="stat-value">
-                      {summary && summary.totalIncome > 0
-                        ? ((summary.totalExpense / summary.totalIncome) * 100).toFixed(1)
-                        : 0}
-                      %
-                    </span>
-                  </div>
-                </Col>
-              </Row>
-            </Card>
-          </Col>
-        </Row>
+              <div
+                className="stat-tile staff-tile clickable"
+                onClick={() => setIsSalaryModalOpen(true)}
+              >
+                <div className="stat-tile-icon staff-icon">
+                  <TeamOutlined />
+                </div>
+                <div className="stat-tile-body">
+                  <span className="stat-tile-label">Staff Salary</span>
+                  <span className="stat-tile-value staff-value">
+                    {currencySymbol}
+                    {staffSalaryCombinedTotal.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
 
-        {/* Charts */}
-        <ChartsPanel key={chartsRefreshKey} dateRange={rangeParams} />
-        </>
+            {/* Charts */}
+            <ChartsPanel />
+          </>
         )}
       </div>
 
-    {/* Add Transaction Modal */}
-    <Modal
-      title={null}
-      open={isModalOpen}
-      onCancel={() => setIsModalOpen(false)}
-      footer={null}
-      width={700}
-      bodyStyle={{ padding: 0 }}
-      className="transaction-modal"
-    >
-      <TransactionForm
-        onSuccess={handleAddTransactionSuccess}
-        onCancel={() => setIsModalOpen(false)}
-      />
-    </Modal>
+      {/* Staff Salary breakdown popup */}
+      <Modal
+        title="Salary Breakdown"
+        open={isSalaryModalOpen}
+        onCancel={() => setIsSalaryModalOpen(false)}
+        footer={null}
+        width={420}
+      >
+        {salaryDonutData.length === 0 ? (
+          <Alert message="No salary transactions recorded yet." type="info" showIcon />
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={salaryDonutData}
+                  dataKey="total"
+                  nameKey="category"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={2}
+                  onClick={(entry) => handleSalarySliceClick((entry as unknown as { category: string }).category)}
+                  cursor="pointer"
+                >
+                  {salaryDonutData.map((entry, index) => (
+                    <Cell key={entry.category} fill={SALARY_COLORS[index % SALARY_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(value) => `${currencySymbol}${Number(value).toFixed(2)}`} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+            <p className="salary-modal-hint">Click a segment to view its transactions.</p>
+          </>
+        )}
+      </Modal>
     </>
   );
 }
-

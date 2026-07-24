@@ -36,7 +36,12 @@ import './TransactionsList.css';
 
 const { RangePicker } = DatePicker;
 
-export default function TransactionsList() {
+interface TransactionsListProps {
+  initialTypeFilter?: string;
+  initialCategoryFilter?: string;
+}
+
+export default function TransactionsList({ initialTypeFilter, initialCategoryFilter }: TransactionsListProps) {
   const { currencySymbol } = useSettings();
   const { isAdmin } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -45,8 +50,8 @@ export default function TransactionsList() {
   const [error, setError] = useState<string | null>(null);
 
   const [searchText, setSearchText] = useState('');
-  const [typeFilter, setTypeFilter] = useState<string | undefined>();
-  const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
+  const [typeFilter, setTypeFilter] = useState<string | undefined>(initialTypeFilter);
+  const [categoryFilter, setCategoryFilter] = useState<string | undefined>(initialCategoryFilter);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);

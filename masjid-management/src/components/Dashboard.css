@@ -5,35 +5,6 @@
   border-radius: 8px;
 }
 
-.dashboard-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.dashboard-header-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: nowrap;
-  min-width: 0;
-}
-
-.dashboard-header-controls .ant-picker {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.dashboard-add-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-}
-
 .dashboard-grid {
   margin-bottom: 24px;
 }
@@ -60,78 +31,144 @@
   min-height: 500px;
 }
 
-.summary-card {
+.stat-tile-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-tile {
+  flex: 1 1 200px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-  overflow: hidden;
-  position: relative;
-  background: white !important;
+  transition: all 0.2s ease;
+  background: white;
+  min-width: 0;
 }
 
-.summary-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+.stat-tile.clickable {
+  cursor: pointer;
 }
 
-.income-card {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f8f7 100%) !important;
-  border-left: 4px solid #52c41a;
+.stat-tile.clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
 }
 
-.expense-card {
-  background: linear-gradient(135deg, #fff1f0 0%, #ffe7e6 100%) !important;
-  border-left: 4px solid #f5222d;
-}
-
-.balance-card {
-  background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%) !important;
-  border-left: 4px solid #1890ff;
-}
-
-.balance-card.negative {
-  background: linear-gradient(135deg, #fff1f0 0%, #ffe7e6 100%) !important;
-  border-left: 4px solid #f5222d;
-}
-
-.card-icon {
-  width: 60px;
-  height: 60px;
+.stat-tile-icon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
-  margin-bottom: 16px;
+  font-size: 20px;
   background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(10px);
 }
 
-.income-icon {
+.stat-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stat-tile-label {
+  font-size: 12px;
+  color: #8c8c8c;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-tile-value {
+  font-size: 20px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.income-tile {
+  border-left: 4px solid #52c41a;
+}
+
+.expense-tile {
+  border-left: 4px solid #f5222d;
+}
+
+.balance-tile {
+  border-left: 4px solid #1890ff;
+}
+
+.balance-tile.negative {
+  border-left: 4px solid #f5222d;
+}
+
+.masjid-tile {
+  border-left: 4px solid #2a78d6;
+}
+
+.staff-tile {
+  border-left: 4px solid #4a3aa7;
+}
+
+.income-icon,
+.income-value {
   color: #52c41a;
+}
+.income-icon {
   background: rgba(82, 196, 26, 0.1) !important;
 }
 
-.expense-icon {
+.expense-icon,
+.expense-value {
   color: #f5222d;
+}
+.expense-icon {
   background: rgba(245, 34, 45, 0.1) !important;
 }
 
-.balance-icon {
+.balance-icon,
+.balance-value.positive {
   color: #1890ff;
+}
+.balance-icon {
   background: rgba(24, 144, 255, 0.1) !important;
 }
-
-.balance-icon.negative {
+.balance-icon.negative,
+.balance-value.negative {
   color: #f5222d;
+}
+.balance-icon.negative {
   background: rgba(245, 34, 45, 0.1) !important;
 }
 
-.card-footer {
-  margin-top: 12px;
-  font-size: 12px;
+.masjid-icon,
+.masjid-value {
+  color: #2a78d6;
+}
+.masjid-icon {
+  background: rgba(42, 120, 214, 0.1) !important;
+}
+
+.staff-icon,
+.staff-value {
+  color: #4a3aa7;
+}
+.staff-icon {
+  background: rgba(74, 58, 167, 0.1) !important;
+}
+
+.salary-modal-hint {
+  text-align: center;
   color: #8c8c8c;
-  font-style: italic;
+  font-size: 13px;
+  margin: 8px 0 0;
 }
 
 .stats-card {
@@ -177,23 +214,29 @@
     padding: 16px;
   }
 
-  .dashboard-header {
-    justify-content: center;
-  }
-
-  .summary-card {
+  .stat-tile {
     border-radius: 10px;
+    flex: 1 1 45%;
   }
 
-  .card-icon {
-    width: 48px;
-    height: 48px;
-    font-size: 24px;
+  .stat-tile-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  .stat-tile-value {
+    font-size: 18px;
   }
 }
 
 @media (max-width: 480px) {
   .dashboard-container {
+    padding: 12px;
+  }
+
+  .stat-tile {
+    flex: 1 1 100%;
     padding: 12px;
   }
 
@@ -216,34 +259,18 @@
   text-shadow: none;
 }
 
-:root[data-theme='dark'] .summary-card,
+:root[data-theme='dark'] .stat-tile,
 :root[data-theme='dark'] .stats-card,
 :root[data-theme='dark'] .chart-card {
   background: #1f1f1f !important;
-}
-
-:root[data-theme='dark'] .income-card {
-  background: linear-gradient(135deg, #10281f 0%, #0f2a29 100%) !important;
-}
-
-:root[data-theme='dark'] .expense-card {
-  background: linear-gradient(135deg, #2a1615 0%, #2c1414 100%) !important;
-}
-
-:root[data-theme='dark'] .balance-card {
-  background: linear-gradient(135deg, #10202c 0%, #142a3a 100%) !important;
-}
-
-:root[data-theme='dark'] .balance-card.negative {
-  background: linear-gradient(135deg, #2a1615 0%, #2c1414 100%) !important;
 }
 
 :root[data-theme='dark'] .stat-item {
   background: linear-gradient(135deg, #232323 0%, #1a1a1a 100%);
 }
 
-:root[data-theme='dark'] .card-footer,
-:root[data-theme='dark'] .stat-label {
+:root[data-theme='dark'] .stat-label,
+:root[data-theme='dark'] .salary-modal-hint {
   color: #a0a0a0;
 }
 
