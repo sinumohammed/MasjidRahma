@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Card, Tag, Button, Modal, Select, DatePicker, Radio, Space, message, Spin, Tooltip } from 'antd';
-import { SwapOutlined, PhoneOutlined, UndoOutlined } from '@ant-design/icons';
+import { Card, Tag, Button, Modal, Select, DatePicker, Radio, Space, Input, message, Spin, Tooltip } from 'antd';
+import { SwapOutlined, PhoneOutlined, UndoOutlined, CalendarOutlined, BellOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   getTodayAssignment,
+  getSchedule,
   getMembers,
   createSwap,
   createMutualSwap,
@@ -14,6 +15,7 @@ import {
   type Member,
 } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { buildGoogleCalendarUrl, downloadIcsReminder } from '../../utils/calendar';
 import MemberAvatar from './MemberAvatar';
 import './TodayAssignmentCard.css';
 
@@ -24,11 +26,21 @@ const masjidTodayDayjs = () => dayjs(getMasjidToday().dateString);
 
 type ModalMode = 'swap' | 'mutual' | 'set-current';
 
-export default function TodayAssignmentCard() {
-  const { isAdmin } = useAuth();
+// How far ahead to look for a member's own next turn - comfortably covers
+// typical rotation cycle lengths (number of active members).
+const NEXT_TURN_LOOKAHEAD_DAYS = 60;
+
+interface TodayAssignmentCardProps {
+  onOpenYearlySchedule?: () => void;
+}
+
+export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssignmentCardProps) {
+  const { isAdmin, isLoggedIn, memberId } = useAuth();
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tomorrowAssignment, setTomorrowAssignment] = useState<Assignment | null>(null);
+  const [myNextTurn, setMyNextTurn] = useState<Assignment | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [mode, setMode] = useState<ModalMode>('swap');
@@ -38,6 +50,10 @@ export default function TodayAssignmentCard() {
   const [otherSwapDate, setOtherSwapDate] = useState<Dayjs>(masjidTodayDayjs());
   const [submitting, setSubmitting] = useState(false);
   const [reverting, setReverting] = useState(false);
+
+  const [reminderModalOpen, setReminderModalOpen] = useState(false);
+  const [reminderSubject, setReminderSubject] = useState('Masjid Food Day - Your Turn');
+  const [reminderDate, setReminderDate] = useState<Dayjs>(masjidTodayDayjs());
 
   const loadAssignment = async () => {
     try {
@@ -52,11 +68,30 @@ export default function TodayAssignmentCard() {
     }
   };
 
+  const loadUpcoming = async () => {
+    try {
+      if (isAdmin) {
+        const schedule = await getSchedule(2);
+        setTomorrowAssignment(schedule[1] ?? null);
+      } else if (isLoggedIn && memberId) {
+        const schedule = await getSchedule(NEXT_TURN_LOOKAHEAD_DAYS);
+        const upcoming = schedule.find((a, idx) => idx > 0 && a.member?.id === memberId);
+        setMyNextTurn(upcoming ?? null);
+      }
+    } catch {
+      // Non-critical supplementary info - fail silently, keep today's card usable.
+    }
+  };
+
   useEffect(() => {
     loadAssignment();
-    const interval = setInterval(loadAssignment, 300000);
+    loadUpcoming();
+    const interval = setInterval(() => {
+      loadAssignment();
+      loadUpcoming();
+    }, 300000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAdmin, isLoggedIn, memberId]);
 
   const openModal = async () => {
     setMode('swap');
@@ -128,9 +163,41 @@ export default function TodayAssignmentCard() {
     }
   };
 
+  const openReminderModal = () => {
+    if (!myNextTurn) return;
+    setReminderSubject('Masjid Food Day - Your Turn');
+    setReminderDate(dayjs(myNextTurn.date));
+    setReminderModalOpen(true);
+  };
+
+  const handleAddToGoogleCalendar = () => {
+    const url = buildGoogleCalendarUrl({
+      title: reminderSubject || 'Masjid Food Day',
+      description: 'Food duty reminder from Masjid Rahma.',
+      date: reminderDate.format('YYYY-MM-DD'),
+    });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDownloadIcs = () => {
+    downloadIcsReminder({
+      title: reminderSubject || 'Masjid Food Day',
+      description: 'Food duty reminder from Masjid Rahma.',
+      date: reminderDate.format('YYYY-MM-DD'),
+    });
+    message.success('Calendar file downloaded');
+  };
+
+  const isMyTurnToday = !isAdmin && isLoggedIn && !!memberId && assignment?.member?.id === memberId;
+  const showSidePanel = isAdmin || (isLoggedIn && !!memberId);
+
   return (
     <>
-      <Card className="today-assignment-card" bordered={false}>
+      <Card
+        className={`today-assignment-card${isMyTurnToday ? ' my-turn' : ''}${onOpenYearlySchedule ? ' clickable' : ''}`}
+        bordered={false}
+        onClick={onOpenYearlySchedule}
+      >
         {loading ? (
           <Spin />
         ) : error ? (
@@ -138,41 +205,101 @@ export default function TodayAssignmentCard() {
         ) : !assignment?.member ? (
           <div className="today-assignment-empty">No active members set up yet.</div>
         ) : (
-          <div className="today-assignment-body">
-            <MemberAvatar
-              key={assignment.member.unique_id}
-              uniqueId={assignment.member.unique_id}
-              size={56}
-              className="today-assignment-avatar"
-            />
-            <div className="today-assignment-info">
-              <div className="today-assignment-heading">
-                <span className="today-assignment-label">Food Today</span>
-                {assignment.swapped && <Tag color="orange">Swapped</Tag>}
-              </div>
-              <div className="today-assignment-name">{assignment.member.name}</div>
-              {assignment.member.phone && (
-                <a
-                  href={`tel:${assignment.member.phone.replace(/\s+/g, '')}`}
-                  className="today-assignment-phone"
-                >
-                  <PhoneOutlined /> {assignment.member.phone}
-                </a>
-              )}
-              {assignment.swapped && assignment.originalMember && (
-                <div className="today-assignment-original">
-                  Originally: {assignment.originalMember.name}
+          <div className={`today-assignment-split${isAdmin ? ' has-actions' : ''}`}>
+            <div className="today-assignment-main">
+              <MemberAvatar
+                key={assignment.member.unique_id}
+                uniqueId={assignment.member.unique_id}
+                size={64}
+                className="today-assignment-avatar"
+              />
+              <div className="today-assignment-info">
+                <div className="today-assignment-heading">
+                  <span className="today-assignment-label">Food Today</span>
+                  {assignment.swapped && <Tag color="orange">Swapped</Tag>}
+                  {isMyTurnToday && <Tag color="green">It's your turn!</Tag>}
                 </div>
-              )}
+                <div className="today-assignment-name">{assignment.member.name}</div>
+                {assignment.member.phone && (
+                  <a
+                    href={`tel:${assignment.member.phone.replace(/\s+/g, '')}`}
+                    className="today-assignment-phone"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <PhoneOutlined /> {assignment.member.phone}
+                  </a>
+                )}
+                {assignment.swapped && assignment.originalMember && (
+                  <div className="today-assignment-original">
+                    Originally: {assignment.originalMember.name}
+                  </div>
+                )}
+              </div>
             </div>
+
+            {showSidePanel && (
+              <div className="today-assignment-side">
+                {isAdmin ? (
+                  tomorrowAssignment?.member ? (
+                    <>
+                      <div className="today-assignment-side-label">
+                        <CalendarOutlined /> Next Up
+                      </div>
+                      <div className="today-assignment-side-name">
+                        {tomorrowAssignment.member.name}
+                      </div>
+                      <div className="today-assignment-side-desc">
+                        Scheduled for tomorrow's food duty.
+                      </div>
+                    </>
+                  ) : (
+                    <div className="today-assignment-side-empty">
+                      Tomorrow's home isn't set yet.
+                    </div>
+                  )
+                ) : isMyTurnToday ? (
+                  <>
+                    <div className="today-assignment-side-label">
+                      <CalendarOutlined /> Today
+                    </div>
+                    <div className="today-assignment-side-desc">
+                      It's your turn to provide food today - thank you!
+                    </div>
+                  </>
+                ) : myNextTurn?.member ? (
+                  <div
+                    className="today-assignment-side-content clickable"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openReminderModal();
+                    }}
+                  >
+                    <div className="today-assignment-side-label">
+                      <CalendarOutlined /> Your Turn
+                    </div>
+                    <div className="today-assignment-side-name">
+                      {dayjs(myNextTurn.date).format('ddd, MMM D')}
+                    </div>
+                    <div className="today-assignment-side-desc">
+                      Tap to set a reminder for your next turn.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="today-assignment-side-empty">
+                    No upcoming turn found in the next {NEXT_TURN_LOOKAHEAD_DAYS} days.
+                  </div>
+                )}
+              </div>
+            )}
+
             {isAdmin && (
-              <div className="today-assignment-actions">
+              <div className="today-assignment-actions" onClick={(e) => e.stopPropagation()}>
                 {assignment.swapped && (
                   <Tooltip title="Revert to original home">
                     <Button
                       icon={<UndoOutlined />}
                       shape="circle"
-                      size="large"
+                      size="small"
                       onClick={handleRevert}
                       loading={reverting}
                       className="today-assignment-swap-btn"
@@ -183,7 +310,7 @@ export default function TodayAssignmentCard() {
                   <Button
                     icon={<SwapOutlined />}
                     shape="circle"
-                    size="large"
+                    size="small"
                     onClick={openModal}
                     className="today-assignment-swap-btn"
                   />
@@ -282,6 +409,44 @@ export default function TodayAssignmentCard() {
               : mode === 'mutual'
                 ? 'Whoever is currently assigned to each date trades places with the other - no need to pick homes.'
                 : 'This home takes over today, and the rotation continues in normal order from them onward - the rest of the current cycle is replaced.'}
+          </div>
+        </Space>
+      </Modal>
+
+      <Modal
+        title="Set a Reminder"
+        open={reminderModalOpen}
+        onCancel={() => setReminderModalOpen(false)}
+        footer={null}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <div>
+            <div className="swap-modal-field-label">Subject</div>
+            <Input
+              value={reminderSubject}
+              onChange={(e) => setReminderSubject(e.target.value)}
+              placeholder="Reminder subject"
+            />
+          </div>
+          <div>
+            <div className="swap-modal-field-label">Date</div>
+            <DatePicker
+              value={reminderDate}
+              onChange={(d) => d && setReminderDate(d)}
+              format="YYYY-MM-DD"
+              style={{ width: '100%' }}
+            />
+          </div>
+          <Space wrap>
+            <Button type="primary" icon={<CalendarOutlined />} onClick={handleAddToGoogleCalendar}>
+              Add to Google Calendar
+            </Button>
+            <Button icon={<BellOutlined />} onClick={handleDownloadIcs}>
+              Download .ics
+            </Button>
+          </Space>
+          <div className="swap-modal-hint">
+            Adds a one-day event to your calendar app, which handles the actual reminder/notification for you.
           </div>
         </Space>
       </Modal>

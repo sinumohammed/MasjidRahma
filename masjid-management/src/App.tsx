@@ -109,10 +109,17 @@ function App() {
     },
   ];
 
+  const openYearlySchedule = () => setActiveKey('yearly-schedule');
+
   const renderContent = () => {
     switch (activeKey) {
       case 'dashboard':
-        return <Dashboard onNavigateToTransactions={navigateToTransactions} />;
+        return (
+          <Dashboard
+            onNavigateToTransactions={navigateToTransactions}
+            onNavigateToYearlySchedule={openYearlySchedule}
+          />
+        );
       case 'transactions':
         return isAdmin ? (
           <TransactionsList
@@ -120,7 +127,10 @@ function App() {
             initialCategoryFilter={transactionsFilter?.category}
           />
         ) : (
-          <Dashboard onNavigateToTransactions={navigateToTransactions} />
+          <Dashboard
+            onNavigateToTransactions={navigateToTransactions}
+            onNavigateToYearlySchedule={openYearlySchedule}
+          />
         );
       case 'profile':
         return isLoggedIn ? <ProfileView /> : <Dashboard />;

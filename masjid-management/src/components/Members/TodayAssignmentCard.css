@@ -1,18 +1,41 @@
 .today-assignment-card {
+  position: relative;
+  overflow: hidden;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 16px;
+  border-radius: 20px;
   box-shadow: 0 8px 24px rgba(102, 126, 234, 0.25);
   color: white;
 }
 
-.today-assignment-card :global(.ant-card-body) {
-  padding: 20px 24px;
+.today-assignment-card::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  right: -60px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 70%);
+  pointer-events: none;
 }
 
-.today-assignment-body {
+.today-assignment-card :global(.ant-card-body) {
+  position: relative;
+  padding: 22px 24px;
+}
+
+.today-assignment-split {
+  display: flex;
+  align-items: stretch;
+}
+
+.today-assignment-main {
+  flex: 0 1 75%;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
+  padding-right: 20px;
 }
 
 .today-assignment-avatar.member-avatar-icon {
@@ -21,7 +44,10 @@
 
 .today-assignment-avatar.member-avatar-photo {
   background: rgba(255, 255, 255, 0.15);
-  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.today-assignment-avatar {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
 }
 
 .today-assignment-info {
@@ -29,10 +55,15 @@
   min-width: 0;
 }
 
+.today-assignment-split.has-actions .today-assignment-main .today-assignment-heading {
+  padding-right: 44px;
+}
+
 .today-assignment-heading {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 4px;
 }
@@ -74,18 +105,97 @@
   margin-top: 4px;
 }
 
-.today-assignment-actions {
+.today-assignment-side {
+  flex: 0 1 25%;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-left: 20px;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+/* Admin's corner swap/revert icons sit top-right of the whole card, which
+   overlaps the side panel's top edge (the main column is only 75% wide) -
+   push the side panel's content down below them instead of centering it. */
+.today-assignment-split.has-actions .today-assignment-side {
+  justify-content: flex-start;
+  padding-top: 38px;
+}
+
+.today-assignment-side-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+
+.today-assignment-side-content.clickable {
+  cursor: pointer;
+  padding: 8px;
+  margin: -8px 0;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+
+.today-assignment-side-content.clickable:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.today-assignment-side-name {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  overflow-wrap: break-word;
+}
+
+.today-assignment-side-desc,
+.today-assignment-side-empty {
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+.today-assignment-card.my-turn {
+  box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.6), 0 8px 24px rgba(102, 126, 234, 0.25);
+}
+
+.today-assignment-card.clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.today-assignment-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(102, 126, 234, 0.35);
+}
+
+.today-assignment-actions {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 1;
 }
 
 .today-assignment-swap-btn {
   flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
   background: rgba(255, 255, 255, 0.2);
   border: none;
   color: white;
+}
+
+.today-assignment-swap-btn :global(.anticon) {
+  font-size: 12px;
 }
 
 .today-assignment-swap-btn:hover {
@@ -112,12 +222,33 @@
 }
 
 /* Responsive */
+@media (max-width: 640px) {
+  .today-assignment-split {
+    flex-direction: column;
+  }
+
+  .today-assignment-main {
+    flex-basis: auto;
+    padding-right: 0;
+  }
+
+  .today-assignment-side {
+    flex-basis: auto;
+    min-width: 0;
+    margin-top: 16px;
+    padding-left: 0;
+    padding-top: 14px;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.25);
+  }
+}
+
 @media (max-width: 480px) {
   .today-assignment-card :global(.ant-card-body) {
     padding: 16px 18px;
   }
 
-  .today-assignment-body {
+  .today-assignment-main {
     gap: 12px;
   }
 
@@ -135,12 +266,7 @@
   }
 
   .today-assignment-actions {
-    flex-direction: column;
-  }
-
-  .today-assignment-swap-btn.ant-btn-lg {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
+    top: 10px;
+    right: 12px;
   }
 }

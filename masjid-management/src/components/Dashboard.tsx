@@ -36,9 +36,10 @@ export interface TransactionFilter {
 
 interface DashboardProps {
   onNavigateToTransactions?: (filter: TransactionFilter) => void;
+  onNavigateToYearlySchedule?: () => void;
 }
 
-export default function Dashboard({ onNavigateToTransactions }: DashboardProps) {
+export default function Dashboard({ onNavigateToTransactions, onNavigateToYearlySchedule }: DashboardProps) {
   const { currencySymbol } = useSettings();
   const { isAdmin, isLoggedIn } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -131,7 +132,7 @@ export default function Dashboard({ onNavigateToTransactions }: DashboardProps) 
       <div className="dashboard-container">
         <Row gutter={[24, 24]} className="dashboard-grid" style={{ marginBottom: '24px' }}>
           <Col xs={24}>
-            <TodayAssignmentCard />
+            <TodayAssignmentCard onOpenYearlySchedule={onNavigateToYearlySchedule} />
           </Col>
         </Row>
 

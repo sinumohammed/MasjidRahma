@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Table, Button, Alert, Spin, Tooltip } from 'antd';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import type { TableRef } from 'antd/es/table';
 import { getYearlySchedule, getMasjidToday, type YearlyScheduleMember } from '../../services/api';
 import './YearlyScheduleView.css';
 
@@ -15,6 +16,7 @@ export default function YearlyScheduleView() {
   const [members, setMembers] = useState<YearlyScheduleMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const tableRef = useRef<TableRef>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -40,6 +42,19 @@ export default function YearlyScheduleView() {
   const isTodayRow = (record: YearlyScheduleMember) =>
     isCurrentYear &&
     record.months[currentMonthIndex].some((entry) => entry.day === currentDay && entry.swapped !== 'away');
+
+  // Scroll today's home into view once the schedule loads, so landing here
+  // (e.g. from the Dashboard's "Food Today" card) doesn't leave the user
+  // hunting through the member list for the already-highlighted row.
+  useEffect(() => {
+    if (!members.length || !isCurrentYear) return;
+    const todayRecord = members.find(isTodayRow);
+    if (!todayRecord) return;
+    const timer = setTimeout(() => {
+      tableRef.current?.scrollTo({ key: todayRecord.id });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [members, isCurrentYear]);
 
   const columns: ColumnsType<YearlyScheduleMember> = [
     {
@@ -125,6 +140,7 @@ export default function YearlyScheduleView() {
         </div>
       ) : (
         <Table
+          ref={tableRef}
           columns={columns}
           dataSource={members}
           rowKey="id"
