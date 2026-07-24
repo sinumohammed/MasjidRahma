@@ -22,11 +22,17 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
-// Push notifications are optional - unlike JWT_SECRET, the app still runs
-// without them (just no reminders sent), so we warn instead of exiting.
-const pushEnabled = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+// Push notifications are optional - unlike JWT_SECRET, the app must still run
+// without them (just no reminders sent), so misconfiguration here can only
+// ever warn and disable push, never crash the whole server on startup.
+let pushEnabled = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 if (pushEnabled) {
-  webpush.setVapidDetails(VAPID_SUBJECT || 'mailto:admin@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  try {
+    webpush.setVapidDetails(VAPID_SUBJECT || 'mailto:admin@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  } catch (err) {
+    pushEnabled = false;
+    console.warn(`Invalid VAPID configuration, push notifications are disabled: ${err.message}`);
+  }
 } else {
   console.warn('VAPID keys not configured - push notifications are disabled.');
 }
