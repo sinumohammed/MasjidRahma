@@ -8,6 +8,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // We register the SW ourselves in main.tsx (via virtual:pwa-register)
+      // to add a periodic update check for long-lived installed sessions -
+      // leaving this on 'auto' would inject a second, bare registration.
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'icons.svg'],
       manifest: {
         name: 'Masjid Rahma',
