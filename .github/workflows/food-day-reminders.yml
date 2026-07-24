@@ -1,0 +1,18 @@
+name: Food day reminders
+
+on:
+  schedule:
+    # 15:30 UTC = 21:00 IST (Asia/Kolkata) - comfortably before local
+    # midnight, so "tomorrow" stays unambiguous when the backend computes it.
+    - cron: '30 15 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call push reminder endpoint
+        run: |
+          curl -sf --max-time 60 --retry 2 --retry-connrefused --retry-delay 5 \
+            -X POST "https://angular-session.onrender.com/api/push/run-daily-check" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

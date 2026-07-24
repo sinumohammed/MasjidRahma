@@ -391,3 +391,30 @@ export const setCurrentMember = async (memberId: string): Promise<Assignment> =>
   if (!response.ok) throw new Error(result.error || 'Failed to set current member');
   return result;
 };
+
+export const getVapidPublicKey = async (): Promise<string | null> => {
+  const response = await fetch(`${API_BASE_URL}/push/vapid-public-key`);
+  if (!response.ok) throw new Error('Failed to fetch VAPID public key');
+  const result = await response.json();
+  return result.publicKey;
+};
+
+export const subscribePush = async (subscription: PushSubscriptionJSON): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/push/subscribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(subscription),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to subscribe to push notifications');
+};
+
+export const unsubscribePush = async (endpoint: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/push/unsubscribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ endpoint }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to unsubscribe from push notifications');
+};

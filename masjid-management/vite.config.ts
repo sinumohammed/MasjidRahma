@@ -12,6 +12,12 @@ export default defineConfig({
       // to add a periodic update check for long-lived installed sessions -
       // leaving this on 'auto' would inject a second, bare registration.
       injectRegister: false,
+      // A hand-written service worker (src/sw.ts) instead of the generated
+      // default - needed to add push/notificationclick listeners, which the
+      // generateSW strategy has no way to hook into.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.svg', 'icons.svg'],
       manifest: {
         name: 'Masjid Rahma',

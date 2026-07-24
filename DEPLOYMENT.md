@@ -46,6 +46,9 @@ Neon (Postgres, serverless, free tier)
 | `JWT_SECRET` | Signs admin auth tokens | Generated once (`node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`) — rotate via Render dashboard if ever exposed |
 | `FRONTEND_URL` | Restricts CORS to the deployed frontend | Set to the Vercel production URL |
 | `PORT` | Injected automatically by Render | No action needed |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Push notification signing keypair (optional — app runs fine without these, just no reminders sent) | `npx web-push generate-vapid-keys` |
+| `VAPID_SUBJECT` | Contact address push services may use to reach you about the keys, e.g. `mailto:you@example.com` | Pick one |
+| `CRON_SECRET` | Shared secret the GitHub Actions daily reminder job sends as `x-cron-secret` to `/api/push/run-daily-check` | Generate a long random string, also add as a GitHub repo secret with the same value |
 
 ### Frontend (Vercel) — set in Vercel dashboard → Project → Settings → Environment Variables
 | Variable | Purpose |
@@ -97,6 +100,8 @@ Render's free tier sleeps after ~15 minutes of inactivity — the first request 
 - **No admin account created yet** — the first visitor to the deployed site should go through the admin setup flow (`POST /api/auth/setup`, exposed via the app's UI) to create the first admin login.
 - **API tokens used during setup** (Render API key, Vercel token) should be revoked/regenerated from their respective dashboards if you're done with one-off automation and want to reduce standing access.
 - **Installed PWA / already-open tabs may lag behind a fresh deploy for a bit.** `src/main.tsx` forces a service-worker update check on load and on foreground/focus (see Troubleshooting Log below), but a genuinely offline device or a session that never regains focus won't reflect a new deploy until it does.
+- **Push notifications require iOS 16.4+ AND the app added to the Home Screen** (standalone launch) — they silently do not work in a regular Safari tab. Android Chrome works more broadly. This is a platform limitation, not a bug.
+- **The daily food-day-reminder job is triggered externally** by a GitHub Actions cron workflow (`.github/workflows/food-day-reminders.yml`) calling `POST /api/push/run-daily-check`, not an in-process timer — Render's free tier can sleep, so an in-process scheduler would be unreliable.
 
 ---
 

@@ -5,16 +5,30 @@ import pg from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import webpush from 'web-push';
 
 const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT;
+const CRON_SECRET = process.env.CRON_SECRET;
 
 if (!JWT_SECRET) {
   console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start.');
   process.exit(1);
+}
+
+// Push notifications are optional - unlike JWT_SECRET, the app still runs
+// without them (just no reminders sent), so we warn instead of exiting.
+const pushEnabled = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+if (pushEnabled) {
+  webpush.setVapidDetails(VAPID_SUBJECT || 'mailto:admin@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} else {
+  console.warn('VAPID keys not configured - push notifications are disabled.');
 }
 
 // Middleware
@@ -95,6 +109,19 @@ async function initializeDatabase() {
       date TEXT PRIMARY KEY,
       member_id TEXT NOT NULL REFERENCES members(id),
       reason TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  // A member can have multiple devices subscribed (member_id not unique);
+  // endpoint identifies a single device's subscription and is unique so
+  // re-subscribing the same device upserts rather than duplicating.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      member_id TEXT NOT NULL REFERENCES members(id),
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -428,6 +455,58 @@ async function getCurrentAssignedMemberId(ctx, dateStr) {
   const computedId = resolveComputedMemberId(ctx, dateStr);
   const override = await dbGet('SELECT * FROM schedule_overrides WHERE date = $1', [dateStr]);
   return override ? override.member_id : computedId;
+}
+
+// "Tomorrow" in the masjid's timezone - must add a day to the Kolkata-local
+// date string, not do naive UTC/server-local Date math (which would disagree
+// with todayInMasjidTimezone() near midnight depending on server location).
+function tomorrowInMasjidTimezone() {
+  const todayObj = new Date(todayInMasjidTimezone() + 'T00:00:00Z');
+  todayObj.setUTCDate(todayObj.getUTCDate() + 1);
+  return formatDateOnly(todayObj);
+}
+
+// Sends a push reminder to every device subscribed by tomorrow's food-day
+// assignee. Triggered once daily by an external scheduler (see
+// /api/push/run-daily-check) rather than an in-process timer, since this
+// backend can sleep on its host's free tier. Not idempotent - a mid-loop
+// crash could double-send to a later subscription on retry - acceptable for
+// a once-daily reminder, but worth knowing before adding automatic retries.
+async function sendTomorrowAssignmentReminders() {
+  if (!pushEnabled) return { sent: 0, failed: 0, reason: 'push not configured' };
+
+  const tomorrowStr = tomorrowInMasjidTimezone();
+  const ctx = await getRotationProjectionContext();
+  const memberId = await getCurrentAssignedMemberId(ctx, tomorrowStr);
+  if (!memberId) return { sent: 0, failed: 0, reason: 'no assignee resolved for tomorrow' };
+
+  const member = await dbGet('SELECT * FROM members WHERE id = $1', [memberId]);
+  const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [memberId]);
+
+  const payload = JSON.stringify({
+    title: 'Masjid Food Day Reminder',
+    body: `You're on food duty tomorrow (${tomorrowStr}).`,
+    url: '/',
+  });
+
+  let sent = 0;
+  let failed = 0;
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        payload
+      );
+      sent += 1;
+    } catch (err) {
+      failed += 1;
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        await dbRun('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+      }
+    }
+  }
+
+  return { sent, failed, date: tomorrowStr, memberId, memberName: member?.name };
 }
 
 // Creates, replaces, or (if memberId matches the boundary-aware computed
@@ -1156,6 +1235,62 @@ app.delete('/api/members/swap/:date', requireAdmin, async (req, res) => {
   }
 });
 
+// --- Push notifications ---
+
+app.get('/api/push/vapid-public-key', (req, res) => {
+  res.json({ publicKey: pushEnabled ? VAPID_PUBLIC_KEY : null });
+});
+
+// Only a member subscribes for themselves, from their own logged-in session -
+// an admin browsing another member's profile must not bind their own device
+// to that member's reminders.
+app.post('/api/push/subscribe', requireAuth, async (req, res) => {
+  if (req.user.isAdmin || !req.user.memberId) {
+    return res.status(403).json({ error: 'Only a member can subscribe to their own reminders' });
+  }
+  try {
+    const { endpoint, keys } = req.body;
+    if (!endpoint || !keys?.p256dh || !keys?.auth) {
+      return res.status(400).json({ error: 'Invalid push subscription' });
+    }
+    await dbRun(
+      `INSERT INTO push_subscriptions (id, member_id, endpoint, p256dh, auth) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (endpoint) DO UPDATE SET member_id = EXCLUDED.member_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
+      [uuidv4(), req.user.memberId, endpoint, keys.p256dh, keys.auth]
+    );
+    res.json({ message: 'Subscribed' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/push/unsubscribe', requireAuth, async (req, res) => {
+  if (req.user.isAdmin || !req.user.memberId) {
+    return res.status(403).json({ error: 'Only a member can manage their own reminders' });
+  }
+  try {
+    const { endpoint } = req.body;
+    await dbRun('DELETE FROM push_subscriptions WHERE endpoint = $1 AND member_id = $2', [endpoint, req.user.memberId]);
+    res.json({ message: 'Unsubscribed' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Called by an external scheduler (no JWT available), guarded by a shared
+// secret instead of requireAuth/requireAdmin.
+app.post('/api/push/run-daily-check', async (req, res) => {
+  if (!CRON_SECRET || req.headers['x-cron-secret'] !== CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const result = await sendTomorrowAssignmentReminders();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'API is running' });
@@ -1187,4 +1322,8 @@ app.listen(PORT, () => {
   console.log(`  POST   /api/members/swap`);
   console.log(`  DELETE /api/members/swap/:date`);
   console.log(`  POST   /api/members/set-current`);
+  console.log(`  GET    /api/push/vapid-public-key`);
+  console.log(`  POST   /api/push/subscribe`);
+  console.log(`  POST   /api/push/unsubscribe`);
+  console.log(`  POST   /api/push/run-daily-check`);
 });
