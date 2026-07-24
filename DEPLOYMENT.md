@@ -70,12 +70,13 @@ cp masjid-management/.env.example masjid-management/.env
   curl -X POST -H "Authorization: Bearer $RENDER_API_KEY" \
     https://api.render.com/v1/services/srv-d1dqi3h5pdvs73arktsg/deploys -d '{}'
   ```
-- **Frontend**: currently deployed via `vercel --prod` from the CLI (not yet wired to auto-deploy on git push). To redeploy:
+- **Frontend**: auto-deploys on every push to `main` via Vercel's GitHub integration (Project Settings → Root Directory = `masjid-management`). Manual redeploy: Vercel dashboard → Deployments → Redeploy, or:
   ```bash
   cd masjid-management
   npx vercel --prod
   ```
-  To enable auto-deploy on push instead, connect the `sinumohammeds-projects/masjid-management` Vercel project to the GitHub repo from the Vercel dashboard (Project → Settings → Git).
+  > ⚠️ The manual CLI path and the git-triggered path don't mix well: the local `.vercel/project.json` link lives inside `masjid-management/`, so `vercel --prod` run from there already scopes to that folder — but Root Directory = `masjid-management` (needed for git-triggered deploys, which clone the full repo) makes the CLI look for a nonexistent nested `masjid-management/masjid-management`. Prefer git-push deploys; only use the CLI path if you first confirm Root Directory behavior for your case.
+  - **Always use the stable production URL** (`https://masjid-management-omega.vercel.app`), not a deployment-specific preview URL (e.g. `masjid-management-<hash>-<team>.vercel.app`) — the backend's `FRONTEND_URL` CORS allow-list only matches the production domain, so preview URLs will fail with a CORS error even though the app itself deployed fine.
 
 ---
 
@@ -94,8 +95,8 @@ Render's free tier sleeps after ~15 minutes of inactivity — the first request 
 
 - **Render free tier**: cold starts after idle, limited monthly hours. Fine for low-traffic use; upgrade to a paid instance if the masjid needs always-on availability.
 - **No admin account created yet** — the first visitor to the deployed site should go through the admin setup flow (`POST /api/auth/setup`, exposed via the app's UI) to create the first admin login.
-- **Vercel auto-deploy not connected to GitHub** — currently manual (`vercel --prod`). Connect the Git integration in the Vercel dashboard if you want push-to-deploy.
 - **API tokens used during setup** (Render API key, Vercel token) should be revoked/regenerated from their respective dashboards if you're done with one-off automation and want to reduce standing access.
+- **Installed PWA / already-open tabs may lag behind a fresh deploy for a bit.** `src/main.tsx` forces a service-worker update check on load and on foreground/focus (see Troubleshooting Log below), but a genuinely offline device or a session that never regains focus won't reflect a new deploy until it does.
 
 ---
 
@@ -104,6 +105,15 @@ Render's free tier sleeps after ~15 minutes of inactivity — the first request 
 ### Issue: `npm error Missing script: "start"` on Render
 - **Cause**: the Render service's Root Directory was pointed at the repo/frontend root instead of `masjid-management/server`, so it ran the frontend's `package.json` (no `start` script) instead of the backend's.
 - **Fix**: Render dashboard → service → Settings → Build & Deploy → set Root Directory to `masjid-management/server`, Build Command to `npm install`, Start Command to `npm start`.
+
+### Issue: Vercel build fails with `sh: line 1: vite: command not found` / `Error: Command "vite build" exited with 127`
+- **Cause**: Vercel's project **Root Directory** was set to `./` (repo root) instead of `masjid-management`. Git-triggered deploys clone the *entire* repo, so with Root Directory unset it tried to install/build at the repo root, which has no `package.json` at all (only `masjid-management/package.json` has `vite`) — hence no install step ran and `vite` was never found. This looked like a stale-build-cache issue at first (identical cache ID kept getting restored across deploys), but disabling cache entirely reproduced the exact same failure, which ruled that out and pointed at Root Directory instead.
+- **Fix**: Vercel dashboard → Settings → Root Directory → set to `masjid-management` → Save → redeploy.
+- Two smaller contributing fixes also landed alongside this (harmless either way, kept as belt-and-suspenders): `masjid-management/.npmrc` (`production=false`, forces devDependencies to install regardless of `NODE_ENV`) and `masjid-management/vercel.json` (`installCommand: npm ci`, forces a deterministic clean install).
+
+### Issue: CORS error on a freshly deployed frontend (`... has been blocked by CORS policy`)
+- **Cause**: opening a Vercel **per-deployment preview URL** (e.g. `masjid-management-<hash>-<team>.vercel.app`, the unique URL Vercel generates for every single build) instead of the stable production domain. The backend's `FRONTEND_URL` CORS allow-list is an exact string match against the production URL only.
+- **Fix**: always use `https://masjid-management-omega.vercel.app` to browse the live app, not a deployment-specific URL.
 
 ---
 
