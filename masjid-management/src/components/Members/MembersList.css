@@ -76,6 +76,14 @@
 
 .members-name-text {
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.members-active-tick {
+  color: #52c41a;
+  font-size: 13px;
 }
 
 .members-name-meta {

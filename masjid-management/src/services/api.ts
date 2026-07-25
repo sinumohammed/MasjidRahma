@@ -80,6 +80,7 @@ export interface Member {
   payment_amount?: number | null;
   payment_frequency?: 'monthly' | 'yearly' | null;
   member_type: MemberType;
+  hasPushSubscription: boolean;
 }
 
 export interface DuesInfo {

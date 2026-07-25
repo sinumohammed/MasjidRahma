@@ -1343,7 +1343,13 @@ function validateMemberType(memberType) {
 
 app.get('/api/members', async (req, res) => {
   try {
-    const members = await dbAll('SELECT * FROM members ORDER BY position ASC');
+    const members = await dbAll(
+      `SELECT m.*, COUNT(ps.id) > 0 AS "hasPushSubscription"
+       FROM members m
+       LEFT JOIN push_subscriptions ps ON ps.member_id = m.id
+       GROUP BY m.id
+       ORDER BY m.position ASC`
+    );
     res.json(members);
   } catch (error) {
     res.status(500).json({ error: error.message });
