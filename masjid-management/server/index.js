@@ -515,6 +515,39 @@ async function sendTomorrowAssignmentReminders() {
   return { sent, failed, date: tomorrowStr, memberId, memberName: member?.name };
 }
 
+// Notifies a member's subscribed devices that a "Masjid payment" transaction
+// was just recorded against them (covers both monthly and yearly payers -
+// the category is the same either way, only the member's own payment_frequency
+// differs, which isn't relevant to the notification text itself).
+async function sendPaymentReceivedNotification(memberId, amount) {
+  if (!pushEnabled || !memberId) return;
+  try {
+    const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [memberId]);
+    if (subscriptions.length === 0) return;
+
+    const payload = JSON.stringify({
+      title: 'Payment Received - Masjid Rahma',
+      body: `We've received your payment of ₹${Number(amount).toFixed(2)} as Masjid payment. Jazakallah Khair!`,
+      url: '/',
+    });
+
+    for (const sub of subscriptions) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        );
+      } catch (err) {
+        if (err.statusCode === 404 || err.statusCode === 410) {
+          await dbRun('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`Failed to send payment-received notification: ${err.message}`);
+  }
+}
+
 // Creates, replaces, or (if memberId matches the boundary-aware computed
 // rotation member) clears the override for a date - the single source of
 // truth for "assign this date to this member" used by both the one-time
@@ -871,6 +904,10 @@ app.post('/api/transactions', requireAdmin, async (req, res) => {
 
     const newTransaction = await dbGet('SELECT * FROM transactions WHERE id = $1', [id]);
     res.status(201).json(newTransaction);
+
+    if (type === 'income' && category === 'Masjid payment' && memberId) {
+      sendPaymentReceivedNotification(memberId, amount);
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

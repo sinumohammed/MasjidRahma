@@ -18,13 +18,13 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
-      includeAssets: ['favicon.svg', 'icons.svg'],
+      includeAssets: ['favicon.png', 'icons.svg'],
       manifest: {
         name: 'Masjid Rahma',
         short_name: 'Masjid Rahma',
         description: 'Masjid financial management and dues tracking',
-        theme_color: '#aa3bff',
-        background_color: '#ffffff',
+        theme_color: '#0a2e22',
+        background_color: '#0a2e22',
         display: 'standalone',
         start_url: '/',
         icons: [
