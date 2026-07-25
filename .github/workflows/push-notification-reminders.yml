@@ -1,0 +1,27 @@
+name: Push notification reminders
+
+on:
+  schedule:
+    # 15:30 UTC = 21:00 IST (Asia/Kolkata) - comfortably before local
+    # midnight, so "tomorrow"/"last day of the month" stay unambiguous when
+    # the backend computes them.
+    - cron: '30 15 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Food-day-before reminder
+        run: |
+          curl -sf --max-time 60 --retry 2 --retry-connrefused --retry-delay 5 \
+            -X POST "https://angular-session.onrender.com/api/push/run-daily-check" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+
+      # No-ops most days - only actually sends on the last day of the month
+      # (see isLastDayOfMasjidMonth in server/index.js).
+      - name: Month-end dues reminder
+        run: |
+          curl -sf --max-time 60 --retry 2 --retry-connrefused --retry-delay 5 \
+            -X POST "https://angular-session.onrender.com/api/push/run-monthly-dues-check" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

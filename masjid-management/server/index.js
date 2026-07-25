@@ -548,6 +548,84 @@ async function sendPaymentReceivedNotification(memberId, amount) {
   }
 }
 
+// True on the last calendar day of the current month in the masjid's
+// timezone (i.e. tomorrow rolls into a new month). No native "run on the
+// last day of the month" cron syntax exists, so the external scheduler
+// calls this check daily and it only actually sends on that one day.
+function isLastDayOfMasjidMonth() {
+  const todayStr = todayInMasjidTimezone();
+  const tomorrowStr = tomorrowInMasjidTimezone();
+  return todayStr.slice(0, 7) !== tomorrowStr.slice(0, 7);
+}
+
+// Reminds members with an outstanding "Masjid payment" due at month end -
+// monthly-plan members get their specific missed months listed, yearly-plan
+// members get the outstanding amount for the year. Only active members with
+// a payment plan configured are considered; members with no plan (hasPlan
+// false) are silently skipped, matching how dues are treated everywhere else
+// in the app. `force` bypasses the last-day-of-month gate for manual testing.
+async function sendMonthEndDuesReminders({ force = false } = {}) {
+  if (!pushEnabled) return { checked: 0, remindersSent: 0, failed: 0, reason: 'push not configured' };
+  if (!force && !isLastDayOfMasjidMonth()) {
+    return { checked: 0, remindersSent: 0, failed: 0, reason: 'not the last day of the month' };
+  }
+
+  const today = getMasjidTodayParts();
+  const members = await dbAll(
+    `SELECT * FROM members WHERE active = true AND payment_amount IS NOT NULL AND payment_frequency IS NOT NULL`
+  );
+
+  let checked = 0;
+  let remindersSent = 0;
+  let failed = 0;
+
+  for (const member of members) {
+    checked += 1;
+    const paidRow = await dbGet(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+       WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'`,
+      [member.id]
+    );
+    const paid = Number(paidRow.total);
+    const dues = calculateDues(member, paid, today);
+    if (!dues.hasPlan || !dues.due || dues.due <= 0) continue;
+
+    let body;
+    if (member.payment_frequency === 'monthly') {
+      const missedLabels = buildMonthlyBreakdown(member, paid, today)
+        .filter((entry) => entry.status === 'missed')
+        .map((entry) => entry.label);
+      if (missedLabels.length === 0) continue;
+      body = `You have unpaid Masjid payment dues for: ${missedLabels.join(', ')} (₹${dues.due.toFixed(2)}). Please settle at your earliest convenience.`;
+    } else {
+      body = `Your yearly Masjid payment of ₹${dues.due.toFixed(2)} is due. Please settle at your earliest convenience.`;
+    }
+
+    const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [member.id]);
+    if (subscriptions.length === 0) continue;
+
+    const payload = JSON.stringify({ title: 'Masjid Payment Reminder', body, url: '/' });
+    let anySent = false;
+    for (const sub of subscriptions) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        );
+        anySent = true;
+      } catch (err) {
+        failed += 1;
+        if (err.statusCode === 404 || err.statusCode === 410) {
+          await dbRun('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+        }
+      }
+    }
+    if (anySent) remindersSent += 1;
+  }
+
+  return { checked, remindersSent, failed, month: today.monthIndex + 1, year: today.year };
+}
+
 // Creates, replaces, or (if memberId matches the boundary-aware computed
 // rotation member) clears the override for a date - the single source of
 // truth for "assign this date to this member" used by both the one-time
@@ -1334,6 +1412,21 @@ app.post('/api/push/run-daily-check', async (req, res) => {
   }
 });
 
+// Called daily by the same external scheduler as run-daily-check - only
+// actually sends anything on the last day of the month (see
+// isLastDayOfMasjidMonth); ?force=true bypasses that gate for manual testing.
+app.post('/api/push/run-monthly-dues-check', async (req, res) => {
+  if (!CRON_SECRET || req.headers['x-cron-secret'] !== CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const result = await sendMonthEndDuesReminders({ force: req.query.force === 'true' });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'API is running' });
@@ -1369,4 +1462,5 @@ app.listen(PORT, () => {
   console.log(`  POST   /api/push/subscribe`);
   console.log(`  POST   /api/push/unsubscribe`);
   console.log(`  POST   /api/push/run-daily-check`);
+  console.log(`  POST   /api/push/run-monthly-dues-check`);
 });
