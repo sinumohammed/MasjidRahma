@@ -1655,6 +1655,27 @@ app.post('/api/push/announce', requireAdmin, async (req, res) => {
   }
 });
 
+// Admin clears the entire announcement history. Placed above the :id route
+// so 'clear' isn't matched as an id param.
+app.delete('/api/announcements/clear', requireAdmin, async (req, res) => {
+  try {
+    await dbRun('DELETE FROM announcements');
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin deletes a single announcement from the history.
+app.delete('/api/announcements/:id', requireAdmin, async (req, res) => {
+  try {
+    await dbRun('DELETE FROM announcements WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Settings > Help contacts (Masjid Committee / Muaddin / Site Related
 // Queries) - public read (shown to every visitor), admin-only edit.
 app.get('/api/contacts', async (req, res) => {

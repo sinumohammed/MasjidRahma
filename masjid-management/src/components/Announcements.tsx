@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, Table, Tag, Button, Input, Form, Alert, Tooltip, Popconfirm, Empty, Spin, message, List } from 'antd';
-import { SoundOutlined, BellOutlined, NotificationOutlined } from '@ant-design/icons';
+import { SoundOutlined, BellOutlined, NotificationOutlined, DeleteOutlined, ClearOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
   getPendingDuesMembers,
@@ -8,6 +8,8 @@ import {
   remindAllPending,
   sendAnnouncement,
   getAnnouncements,
+  deleteAnnouncement,
+  clearAnnouncements,
   type PendingDuesMember,
   type AnnouncementRecord,
 } from '../services/api';
@@ -33,6 +35,8 @@ export default function Announcements() {
   const [announceTitle, setAnnounceTitle] = useState('');
   const [announceMessage, setAnnounceMessage] = useState('');
   const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
 
   const loadHistory = async () => {
     try {
@@ -61,11 +65,8 @@ export default function Announcements() {
   };
 
   useEffect(() => {
-    if (isAdmin) {
-      loadPending();
-    } else {
-      loadHistory();
-    }
+    loadHistory();
+    if (isAdmin) loadPending();
   }, [isAdmin]);
 
   const handleRemind = async (member: PendingDuesMember) => {
@@ -111,10 +112,35 @@ export default function Announcements() {
       }
       setAnnounceTitle('');
       setAnnounceMessage('');
+      loadHistory();
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Failed to send announcement');
     } finally {
       setSendingAnnouncement(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteAnnouncement(id);
+      setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Failed to delete announcement');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAll = async () => {
+    setClearingAll(true);
+    try {
+      await clearAnnouncements();
+      setAnnouncements([]);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Failed to clear announcements');
+    } finally {
+      setClearingAll(false);
     }
   };
 
@@ -229,35 +255,6 @@ export default function Announcements() {
         </Card>
       )}
 
-      {!isAdmin && (
-        <Card className="announcements-card" title={<><BellOutlined /> Recent Announcements</>}>
-          {historyError && (
-            <Alert message="Error" description={historyError} type="error" showIcon style={{ marginBottom: 16 }} />
-          )}
-          {historyLoading ? (
-            <div className="announcements-loading">
-              <Spin size="large" />
-            </div>
-          ) : announcements.length === 0 ? (
-            <Empty description="No announcements yet" />
-          ) : (
-            <List
-              itemLayout="vertical"
-              dataSource={announcements}
-              renderItem={(item) => (
-                <List.Item key={item.id} className="announcement-list-item">
-                  <div className="announcement-item-title">{item.title}</div>
-                  <div className="announcement-item-message">{item.message}</div>
-                  <div className="announcement-item-date">
-                    {new Date(item.created_at).toLocaleString()}
-                  </div>
-                </List.Item>
-              )}
-            />
-          )}
-        </Card>
-      )}
-
       {isAdmin && (
       <Card
         className="announcements-card"
@@ -293,6 +290,73 @@ export default function Announcements() {
         )}
       </Card>
       )}
+
+      <Card
+        className="announcements-card"
+        title={<><BellOutlined /> Recent Announcements</>}
+        extra={
+          isAdmin &&
+          announcements.length > 0 && (
+            <Popconfirm
+              title="Clear all announcements?"
+              description="This removes the entire history for everyone."
+              onConfirm={handleClearAll}
+            >
+              <Button icon={<ClearOutlined />} loading={clearingAll} danger>
+                Clear All
+              </Button>
+            </Popconfirm>
+          )
+        }
+      >
+        {historyError && (
+          <Alert message="Error" description={historyError} type="error" showIcon style={{ marginBottom: 16 }} />
+        )}
+        {historyLoading ? (
+          <div className="announcements-loading">
+            <Spin size="large" />
+          </div>
+        ) : announcements.length === 0 ? (
+          <Empty description="No announcements yet" />
+        ) : (
+          <List
+            itemLayout="vertical"
+            dataSource={announcements}
+            renderItem={(item) => (
+              <List.Item
+                key={item.id}
+                className="announcement-list-item"
+                actions={
+                  isAdmin
+                    ? [
+                        <Popconfirm
+                          key="delete"
+                          title="Delete this announcement?"
+                          onConfirm={() => handleDeleteAnnouncement(item.id)}
+                        >
+                          <Button
+                            icon={<DeleteOutlined />}
+                            size="small"
+                            danger
+                            loading={deletingId === item.id}
+                          >
+                            Delete
+                          </Button>
+                        </Popconfirm>,
+                      ]
+                    : undefined
+                }
+              >
+                <div className="announcement-item-title">{item.title}</div>
+                <div className="announcement-item-message">{item.message}</div>
+                <div className="announcement-item-date">
+                  {new Date(item.created_at).toLocaleString()}
+                </div>
+              </List.Item>
+            )}
+          />
+        )}
+      </Card>
     </div>
   );
 }

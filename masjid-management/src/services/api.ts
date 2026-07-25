@@ -493,6 +493,28 @@ export const getAnnouncements = async (): Promise<AnnouncementRecord[]> => {
   return result;
 };
 
+export const deleteAnnouncement = async (id: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/announcements/${id}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) {
+    const result = await response.json();
+    throw new Error(result.error || 'Failed to delete announcement');
+  }
+};
+
+export const clearAnnouncements = async (): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/announcements/clear`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) {
+    const result = await response.json();
+    throw new Error(result.error || 'Failed to clear announcements');
+  }
+};
+
 export interface Contact {
   id: string;
   group_key: 'committee' | 'muaddin' | 'query';
