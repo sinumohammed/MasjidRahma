@@ -479,6 +479,20 @@ export const sendAnnouncement = async (title: string, message: string): Promise<
   return result;
 };
 
+export interface AnnouncementRecord {
+  id: string;
+  title: string;
+  message: string;
+  created_at: string;
+}
+
+export const getAnnouncements = async (): Promise<AnnouncementRecord[]> => {
+  const response = await fetch(`${API_BASE_URL}/announcements`);
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to load announcements');
+  return result;
+};
+
 export interface Contact {
   id: string;
   group_key: 'committee' | 'muaddin' | 'query';

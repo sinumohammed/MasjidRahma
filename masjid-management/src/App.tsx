@@ -73,13 +73,25 @@ function App() {
   }, [isLoggedIn, isAdmin, memberId]);
 
   useEffect(() => {
-    if (!isAdmin && (activeKey === 'transactions' || activeKey === 'announcements')) {
+    if (!isAdmin && activeKey === 'transactions') {
       setActiveKey('dashboard');
     }
-    if (!isLoggedIn && (activeKey === 'profile' || activeKey === 'members' || activeKey === 'settings')) {
+    if (!isLoggedIn && (activeKey === 'profile' || activeKey === 'members' || activeKey === 'settings' || activeKey === 'announcements')) {
       setActiveKey('dashboard');
     }
   }, [isAdmin, isLoggedIn, activeKey]);
+
+  // Land directly on Announcements when opened via a push-notification tap
+  // (service worker sends url: '/?view=announcements') - only meaningful once
+  // logged in, so the redirect effect above bounces it back to Dashboard for
+  // anonymous visitors instead.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('view') === 'announcements') {
+      setActiveKey('announcements');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const menuItems: MenuProps['items'] = [
     {
@@ -94,15 +106,15 @@ function App() {
             icon: <FileTextOutlined />,
             label: 'Transactions',
           },
+        ]
+      : []),
+    ...(isLoggedIn
+      ? [
           {
             key: 'announcements',
             icon: <SoundOutlined />,
             label: 'Announcements',
           },
-        ]
-      : []),
-    ...(isLoggedIn
-      ? [
           {
             key: 'profile',
             icon: <WalletOutlined />,
@@ -171,7 +183,7 @@ function App() {
       case 'profile':
         return isLoggedIn ? <ProfileView /> : <Dashboard />;
       case 'announcements':
-        return isAdmin ? (
+        return isLoggedIn ? (
           <Announcements />
         ) : (
           <Dashboard

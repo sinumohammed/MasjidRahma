@@ -48,9 +48,22 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const targetUrl = (event.notification.data?.url as string) || '/'
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
       const existing = clients.find((c): c is WindowClient => 'focus' in c)
-      if (existing) return existing.focus()
+      if (existing) {
+        // App is already open - navigate it to the target route (e.g.
+        // /?view=announcements) rather than just focusing, since focus()
+        // alone leaves whatever screen was already showing on screen and the
+        // App component's one-time ?view= mount effect won't re-run.
+        if ('navigate' in existing) {
+          try {
+            await existing.navigate(targetUrl)
+          } catch {
+            // Cross-origin or unsupported - fall back to just focusing.
+          }
+        }
+        return existing.focus()
+      }
       return self.clients.openWindow(targetUrl)
     })
   )

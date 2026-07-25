@@ -150,6 +150,17 @@ async function initializeDatabase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  // History of broadcast announcements, so members can read them inside the
+  // app after tapping a push notification (not just as a fire-and-forget
+  // push payload).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS announcements (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
   console.log('Database tables ready');
   await backfillMemberUsers();
   await seedDefaultContacts();
@@ -751,11 +762,15 @@ async function remindMemberOfDues(memberId) {
 
 // Broadcasts a general announcement to every subscribed device across all
 // members - unlike the other reminders, this isn't dues/schedule-specific.
+// Always persisted to the announcements table (even if push isn't
+// configured or nobody is subscribed) so it shows up in the in-app list -
+// tapping the push notification lands on that list via url: '/?view=announcements'.
 async function sendAnnouncement(title, message) {
+  await dbRun('INSERT INTO announcements (id, title, message) VALUES ($1, $2, $3)', [uuidv4(), title, message]);
   if (!pushEnabled) return { sent: 0, failed: 0, reason: 'push not configured' };
   const subscriptions = await dbAll('SELECT * FROM push_subscriptions');
   if (subscriptions.length === 0) return { sent: 0, failed: 0, reason: 'no subscribed devices' };
-  const payload = JSON.stringify({ title, body: message, url: '/' });
+  const payload = JSON.stringify({ title, body: message, url: '/?view=announcements' });
   return sendPushToSubscriptions(subscriptions, payload);
 }
 
@@ -1609,6 +1624,18 @@ app.post('/api/push/remind-all-pending', requireAdmin, async (req, res) => {
       if ((result.sent || 0) > 0) remindersSent += 1;
     }
     res.json({ checked: pending.length, remindersSent, sent, failed });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Announcement history - public read (any logged-in member or admin can
+// read it inside the app after tapping a push notification), admin-only
+// send (below).
+app.get('/api/announcements', async (req, res) => {
+  try {
+    const announcements = await dbAll('SELECT * FROM announcements ORDER BY created_at DESC LIMIT 50');
+    res.json(announcements);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Table, Tag, Button, Input, Form, Alert, Tooltip, Popconfirm, Empty, Spin, message } from 'antd';
+import { Card, Table, Tag, Button, Input, Form, Alert, Tooltip, Popconfirm, Empty, Spin, message, List } from 'antd';
 import { SoundOutlined, BellOutlined, NotificationOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -7,15 +7,23 @@ import {
   remindMember,
   remindAllPending,
   sendAnnouncement,
+  getAnnouncements,
   type PendingDuesMember,
+  type AnnouncementRecord,
 } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
+import { useAuth } from '../context/AuthContext';
 import './Announcements.css';
 
 const { TextArea } = Input;
 
 export default function Announcements() {
   const { currencySymbol } = useSettings();
+  const { isAdmin } = useAuth();
+  const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
   const [pending, setPending] = useState<PendingDuesMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +33,19 @@ export default function Announcements() {
   const [announceTitle, setAnnounceTitle] = useState('');
   const [announceMessage, setAnnounceMessage] = useState('');
   const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
+
+  const loadHistory = async () => {
+    try {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      const data = await getAnnouncements();
+      setAnnouncements(data);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : 'Failed to load announcements');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const loadPending = async () => {
     try {
@@ -40,8 +61,9 @@ export default function Announcements() {
   };
 
   useEffect(() => {
-    loadPending();
-  }, []);
+    loadHistory();
+    if (isAdmin) loadPending();
+  }, [isAdmin]);
 
   const handleRemind = async (member: PendingDuesMember) => {
     setRemindingId(member.id);
@@ -81,11 +103,12 @@ export default function Announcements() {
       const result = await sendAnnouncement(announceTitle.trim(), announceMessage.trim());
       if (result.sent > 0) {
         message.success(`Announcement sent to ${result.sent} device(s)`);
-        setAnnounceTitle('');
-        setAnnounceMessage('');
       } else {
         message.warning(result.reason || 'No devices received the announcement');
       }
+      setAnnounceTitle('');
+      setAnnounceMessage('');
+      loadHistory();
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Failed to send announcement');
     } finally {
@@ -164,44 +187,74 @@ export default function Announcements() {
         </h1>
       </div>
 
-      <Card className="announcements-card" title={<><NotificationOutlined /> Public Announcement</>}>
-        <Form layout="vertical">
-          <Form.Item label="Title">
-            <Input
-              placeholder="e.g. Friday Jumu'ah time change"
-              value={announceTitle}
-              onChange={(e) => setAnnounceTitle(e.target.value)}
-              maxLength={100}
-            />
-          </Form.Item>
-          <Form.Item label="Message">
-            <TextArea
-              placeholder="Write the announcement for all members..."
-              value={announceMessage}
-              onChange={(e) => setAnnounceMessage(e.target.value)}
-              rows={3}
-              maxLength={500}
-              showCount
-            />
-          </Form.Item>
-          <Popconfirm
-            title="Send this announcement to all members?"
-            description="Every member with notifications enabled will receive it."
-            onConfirm={handleSendAnnouncement}
-            disabled={!announceTitle.trim() || !announceMessage.trim()}
-          >
-            <Button
-              type="primary"
-              icon={<SoundOutlined />}
-              loading={sendingAnnouncement}
+      {isAdmin && (
+        <Card className="announcements-card" title={<><NotificationOutlined /> Public Announcement</>}>
+          <Form layout="vertical">
+            <Form.Item label="Title">
+              <Input
+                placeholder="e.g. Friday Jumu'ah time change"
+                value={announceTitle}
+                onChange={(e) => setAnnounceTitle(e.target.value)}
+                maxLength={100}
+              />
+            </Form.Item>
+            <Form.Item label="Message">
+              <TextArea
+                placeholder="Write the announcement for all members..."
+                value={announceMessage}
+                onChange={(e) => setAnnounceMessage(e.target.value)}
+                rows={3}
+                maxLength={500}
+                showCount
+              />
+            </Form.Item>
+            <Popconfirm
+              title="Send this announcement to all members?"
+              description="Every member with notifications enabled will receive it."
+              onConfirm={handleSendAnnouncement}
               disabled={!announceTitle.trim() || !announceMessage.trim()}
             >
-              Send to All Members
-            </Button>
-          </Popconfirm>
-        </Form>
+              <Button
+                type="primary"
+                icon={<SoundOutlined />}
+                loading={sendingAnnouncement}
+                disabled={!announceTitle.trim() || !announceMessage.trim()}
+              >
+                Send to All Members
+              </Button>
+            </Popconfirm>
+          </Form>
+        </Card>
+      )}
+
+      <Card className="announcements-card" title={<><BellOutlined /> Recent Announcements</>}>
+        {historyError && (
+          <Alert message="Error" description={historyError} type="error" showIcon style={{ marginBottom: 16 }} />
+        )}
+        {historyLoading ? (
+          <div className="announcements-loading">
+            <Spin size="large" />
+          </div>
+        ) : announcements.length === 0 ? (
+          <Empty description="No announcements yet" />
+        ) : (
+          <List
+            itemLayout="vertical"
+            dataSource={announcements}
+            renderItem={(item) => (
+              <List.Item key={item.id} className="announcement-list-item">
+                <div className="announcement-item-title">{item.title}</div>
+                <div className="announcement-item-message">{item.message}</div>
+                <div className="announcement-item-date">
+                  {new Date(item.created_at).toLocaleString()}
+                </div>
+              </List.Item>
+            )}
+          />
+        )}
       </Card>
 
+      {isAdmin && (
       <Card
         className="announcements-card"
         title={<><BellOutlined /> Pending Masjid Payments</>}
@@ -235,6 +288,7 @@ export default function Announcements() {
           />
         )}
       </Card>
+      )}
     </div>
   );
 }
