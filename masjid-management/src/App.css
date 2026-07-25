@@ -62,6 +62,12 @@ body {
   background: rgba(255, 255, 255, 0.18);
 }
 
+.app-user-menu-announcements {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* App Logo Styling */
 .app-logo {
   padding: 16px;
