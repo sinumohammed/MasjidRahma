@@ -1737,6 +1737,31 @@ app.get('/api/my-notifications', requireAuth, async (req, res) => {
   }
 });
 
+// A member clears their entire own notification history. Placed above the
+// :id route so 'clear' isn't matched as an id param.
+app.delete('/api/my-notifications/clear', requireAuth, async (req, res) => {
+  try {
+    if (!req.user.memberId) return res.json({ success: true });
+    await dbRun('DELETE FROM member_notifications WHERE member_id = $1', [req.user.memberId]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// A member deletes one of their own notifications - scoped by member_id in
+// the WHERE clause so a member can't delete another member's row by guessing
+// its id.
+app.delete('/api/my-notifications/:id', requireAuth, async (req, res) => {
+  try {
+    if (!req.user.memberId) return res.status(404).json({ error: 'Notification not found' });
+    await dbRun('DELETE FROM member_notifications WHERE id = $1 AND member_id = $2', [req.params.id, req.user.memberId]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Announcement history - public read (any logged-in member or admin can
 // read it inside the app after tapping a push notification), admin-only
 // send (below).

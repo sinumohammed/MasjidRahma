@@ -503,6 +503,28 @@ export const getMyNotifications = async (): Promise<MemberNotification[]> => {
   return result;
 };
 
+export const deleteMyNotification = async (id: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/my-notifications/${id}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) {
+    const result = await response.json();
+    throw new Error(result.error || 'Failed to delete notification');
+  }
+};
+
+export const clearMyNotifications = async (): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/my-notifications/clear`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) {
+    const result = await response.json();
+    throw new Error(result.error || 'Failed to clear notifications');
+  }
+};
+
 export const getAnnouncements = async (): Promise<AnnouncementRecord[]> => {
   const response = await fetch(`${API_BASE_URL}/announcements`);
   const result = await response.json();
