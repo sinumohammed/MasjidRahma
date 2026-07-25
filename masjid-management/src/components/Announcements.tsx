@@ -61,8 +61,11 @@ export default function Announcements() {
   };
 
   useEffect(() => {
-    loadHistory();
-    if (isAdmin) loadPending();
+    if (isAdmin) {
+      loadPending();
+    } else {
+      loadHistory();
+    }
   }, [isAdmin]);
 
   const handleRemind = async (member: PendingDuesMember) => {
@@ -108,7 +111,6 @@ export default function Announcements() {
       }
       setAnnounceTitle('');
       setAnnounceMessage('');
-      loadHistory();
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Failed to send announcement');
     } finally {
@@ -227,32 +229,34 @@ export default function Announcements() {
         </Card>
       )}
 
-      <Card className="announcements-card" title={<><BellOutlined /> Recent Announcements</>}>
-        {historyError && (
-          <Alert message="Error" description={historyError} type="error" showIcon style={{ marginBottom: 16 }} />
-        )}
-        {historyLoading ? (
-          <div className="announcements-loading">
-            <Spin size="large" />
-          </div>
-        ) : announcements.length === 0 ? (
-          <Empty description="No announcements yet" />
-        ) : (
-          <List
-            itemLayout="vertical"
-            dataSource={announcements}
-            renderItem={(item) => (
-              <List.Item key={item.id} className="announcement-list-item">
-                <div className="announcement-item-title">{item.title}</div>
-                <div className="announcement-item-message">{item.message}</div>
-                <div className="announcement-item-date">
-                  {new Date(item.created_at).toLocaleString()}
-                </div>
-              </List.Item>
-            )}
-          />
-        )}
-      </Card>
+      {!isAdmin && (
+        <Card className="announcements-card" title={<><BellOutlined /> Recent Announcements</>}>
+          {historyError && (
+            <Alert message="Error" description={historyError} type="error" showIcon style={{ marginBottom: 16 }} />
+          )}
+          {historyLoading ? (
+            <div className="announcements-loading">
+              <Spin size="large" />
+            </div>
+          ) : announcements.length === 0 ? (
+            <Empty description="No announcements yet" />
+          ) : (
+            <List
+              itemLayout="vertical"
+              dataSource={announcements}
+              renderItem={(item) => (
+                <List.Item key={item.id} className="announcement-list-item">
+                  <div className="announcement-item-title">{item.title}</div>
+                  <div className="announcement-item-message">{item.message}</div>
+                  <div className="announcement-item-date">
+                    {new Date(item.created_at).toLocaleString()}
+                  </div>
+                </List.Item>
+              )}
+            />
+          )}
+        </Card>
+      )}
 
       {isAdmin && (
       <Card
