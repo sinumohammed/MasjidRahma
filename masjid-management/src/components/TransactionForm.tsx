@@ -61,6 +61,8 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
   };
 
   const selectedType = Form.useWatch('type', form);
+  const selectedCategory = Form.useWatch('category', form);
+  const memberRequired = selectedType === 'income' && selectedCategory === 'Masjid payment';
 
   const handleSubmit = async (values: any) => {
     try {
@@ -142,8 +144,12 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
           />
         </Form.Item>
 
-        {/* Member (always optional - attaching one notifies that member of the transaction) */}
-        <Form.Item label="Member (Optional)" name="memberId">
+        {/* Member (mandatory for income + Masjid payment, optional otherwise - attaching one also notifies that member of the transaction) */}
+        <Form.Item
+          label={memberRequired ? 'Member' : 'Member (Optional)'}
+          name="memberId"
+          rules={memberRequired ? [{ required: true, message: 'Please select the member this payment is for' }] : []}
+        >
           <Select
             placeholder="Select a member"
             options={members.map((m) => ({ label: `${m.unique_id} - ${m.name}`, value: m.id }))}

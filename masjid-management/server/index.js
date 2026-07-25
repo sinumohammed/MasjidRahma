@@ -1194,6 +1194,9 @@ app.post('/api/transactions', requireAdmin, async (req, res) => {
     if (!type || !category || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+    if (type === 'income' && category === 'Masjid payment' && !memberId) {
+      return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
+    }
 
     const id = uuidv4();
     const transactionDate = date || new Date().toISOString();
@@ -1226,6 +1229,9 @@ app.put('/api/transactions/:id', requireAdmin, async (req, res) => {
 
     if (!type || !category || !amount || !date) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (type === 'income' && category === 'Masjid payment' && !memberId) {
+      return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
     }
 
     const result = await dbRun(
