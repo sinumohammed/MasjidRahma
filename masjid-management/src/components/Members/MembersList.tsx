@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Table, Tag, Button, Input, Space, Modal, Alert } from 'antd';
+import { Table, Tag, Button, Input, Select, Space, Modal, Alert, Tooltip } from 'antd';
 import { PlusOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { getMembers, type Member } from '../../services/api';
+import { getMembers, type Member, type MemberType } from '../../services/api';
 import MemberForm from './MemberForm';
 import { useAuth } from '../../context/AuthContext';
 import './MembersList.css';
 
-export default function MembersList() {
+interface MembersListProps {
+  initialTypeFilter?: MemberType;
+}
+
+export default function MembersList({ initialTypeFilter }: MembersListProps) {
   const { isAdmin } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [searchText, setSearchText] = useState('');
+  const [typeFilter, setTypeFilter] = useState<MemberType | undefined>(initialTypeFilter);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | undefined>();
@@ -36,10 +41,15 @@ export default function MembersList() {
   }, []);
 
   const filteredMembers = useMemo(() => {
-    if (!searchText) return members;
-    const q = searchText.toLowerCase();
-    return members.filter((m) => `${m.unique_id} ${m.name} ${m.address} ${m.phone}`.toLowerCase().includes(q));
-  }, [members, searchText]);
+    return members.filter((m) => {
+      if (typeFilter && m.member_type !== typeFilter) return false;
+      if (searchText) {
+        const q = searchText.toLowerCase();
+        if (!`${m.unique_id} ${m.name} ${m.address} ${m.phone}`.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [members, searchText, typeFilter]);
 
   const handleAddClick = () => {
     setEditingMember(undefined);
@@ -59,22 +69,30 @@ export default function MembersList() {
 
   const columns: ColumnsType<Member> = [
     {
-      title: 'ID',
-      dataIndex: 'unique_id',
-      key: 'unique_id',
-      width: 100,
-      sorter: (a, b) => a.position - b.position,
-    },
-    {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-    },
-    {
-      title: 'Address',
-      dataIndex: 'address',
-      key: 'address',
-      ellipsis: true,
+      sorter: (a, b) => a.position - b.position,
+      render: (name: string, record: Member) => (
+        <div className="members-name-cell">
+          <Tooltip title={record.active ? 'Active' : 'Inactive'}>
+            <span className={`members-status-dot ${record.active ? 'active' : 'inactive'}`} />
+          </Tooltip>
+          <div className="members-name-text-wrap">
+            <div className="members-name-text">{name}</div>
+            <div className="members-name-meta">
+              <span className="members-name-id">{record.unique_id}</span>
+              <Tag
+                color={record.member_type === 'non_rotation' ? 'orange' : 'blue'}
+                className="members-type-tag"
+              >
+                {record.member_type === 'non_rotation' ? 'Non-Rotation' : 'Regular'}
+              </Tag>
+              <span className="members-family-count">👪 {record.member_count}</span>
+            </div>
+          </div>
+        </div>
+      ),
     },
     {
       title: 'Phone',
@@ -82,28 +100,13 @@ export default function MembersList() {
       key: 'phone',
       width: 140,
     },
-    {
-      title: 'Members',
-      dataIndex: 'member_count',
-      key: 'member_count',
-      width: 100,
-      sorter: (a, b) => a.member_count - b.member_count,
-    },
-    {
-      title: 'Status',
-      dataIndex: 'active',
-      key: 'active',
-      width: 110,
-      render: (active: boolean) => (
-        <Tag color={active ? 'green' : 'default'}>{active ? 'Active' : 'Inactive'}</Tag>
-      ),
-    },
     ...(isAdmin
       ? [
           {
             title: 'Actions',
             key: 'actions',
             width: 90,
+            fixed: 'right' as const,
             render: (_: unknown, record: Member) => (
               <Space>
                 <Button icon={<EditOutlined />} size="small" onClick={() => handleEditClick(record)} />
@@ -149,6 +152,17 @@ export default function MembersList() {
           onChange={(e) => setSearchText(e.target.value)}
           allowClear
           className="filter-search"
+        />
+        <Select
+          placeholder="Type"
+          value={typeFilter}
+          onChange={setTypeFilter}
+          allowClear
+          className="filter-select"
+          options={[
+            { label: 'Regular', value: 'regular' },
+            { label: 'Non-Rotation', value: 'non_rotation' },
+          ]}
         />
       </div>
 

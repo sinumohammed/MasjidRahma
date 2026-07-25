@@ -22,29 +22,6 @@
   margin-bottom: 16px;
 }
 
-.profile-view-notification-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.profile-view-notification-title {
-  font-weight: 600;
-}
-
-.profile-view-notification-desc {
-  font-size: 12px;
-  color: #8c8c8c;
-  margin-top: 2px;
-}
-
-.profile-view-notification-warning {
-  font-size: 12px;
-  color: #cf1322;
-  margin-top: 4px;
-}
-
 .profile-view-header-row {
   display: flex;
   align-items: center;
@@ -59,7 +36,7 @@
   margin-left: auto;
 }
 
-.profile-view-header {
+.profile-view-card-header {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -71,23 +48,41 @@
   border: 2px solid rgba(0, 0, 0, 0.08);
 }
 
-.profile-view-header-info {
+.profile-view-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   min-width: 0;
 }
 
 .profile-view-header-name {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: #1f2937;
+  margin-bottom: 2px;
 }
 
-.profile-view-header-id {
-  color: #6b7280;
+.profile-view-detail-line {
   font-size: 13px;
+  color: #6b7280;
+  overflow-wrap: break-word;
+}
+
+.profile-view-detail-label {
+  font-weight: 600;
+  color: #374151;
+}
+
+:root[data-theme='dark'] .profile-view-detail-label {
+  color: #d1d5db;
 }
 
 :root[data-theme='dark'] .profile-view-header-name {
   color: #e5e7eb;
+}
+
+:root[data-theme='dark'] .profile-view-detail-line {
+  color: #9ca3af;
 }
 
 :root[data-theme='dark'] .profile-view-avatar.member-avatar-icon,

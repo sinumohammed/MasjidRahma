@@ -6,7 +6,7 @@ import {
   ArrowDownOutlined,
   BankOutlined,
   TeamOutlined,
-  LockOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import {
   PieChart,
@@ -16,10 +16,18 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { getSummary, getCategoryStats, type Summary, type CategoryStat } from '../services/api';
+import {
+  getSummary,
+  getCategoryStats,
+  getMembers,
+  type Summary,
+  type CategoryStat,
+  type MemberType,
+} from '../services/api';
 import ChartsPanel from './ChartsPanel';
 import TodayAssignmentCard from './Members/TodayAssignmentCard';
 import ProfileView from './Members/ProfileView';
+import InlineLoginForm from './InlineLoginForm';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
@@ -28,6 +36,11 @@ const MASJID_PAYMENT_CATEGORY = 'Masjid payment';
 const IMAM_SALARY_CATEGORY = 'Imam Salary';
 const STAFF_SALARY_CATEGORY = 'Staff Salary';
 const SALARY_COLORS = ['#4a3aa7', '#eb6834'];
+const MEMBER_TYPE_LABELS: Record<MemberType, string> = {
+  regular: 'Regular',
+  non_rotation: 'Non-Rotation',
+};
+const MEMBER_TYPE_COLORS = ['#2a78d6', '#eda100'];
 
 export interface TransactionFilter {
   type?: 'income' | 'expense';
@@ -37,21 +50,29 @@ export interface TransactionFilter {
 interface DashboardProps {
   onNavigateToTransactions?: (filter: TransactionFilter) => void;
   onNavigateToYearlySchedule?: () => void;
+  onNavigateToMembers?: (typeFilter?: MemberType) => void;
 }
 
-export default function Dashboard({ onNavigateToTransactions, onNavigateToYearlySchedule }: DashboardProps) {
+export default function Dashboard({
+  onNavigateToTransactions,
+  onNavigateToYearlySchedule,
+  onNavigateToMembers,
+}: DashboardProps) {
   const { currencySymbol } = useSettings();
   const { isAdmin, isLoggedIn } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
+  const [memberCounts, setMemberCounts] = useState<Record<MemberType, number>>({ regular: 0, non_rotation: 0 });
   const [loading, setLoading] = useState(isAdmin);
   const [error, setError] = useState<string | null>(null);
   const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isAdmin) {
       setSummary(null);
       setCategoryStats([]);
+      setMemberCounts({ regular: 0, non_rotation: 0 });
       setLoading(false);
       setError(null);
       return;
@@ -61,9 +82,17 @@ export default function Dashboard({ onNavigateToTransactions, onNavigateToYearly
       try {
         setLoading(true);
         setError(null);
-        const [summaryData, statsData] = await Promise.all([getSummary(), getCategoryStats()]);
+        const [summaryData, statsData, membersData] = await Promise.all([
+          getSummary(),
+          getCategoryStats(),
+          getMembers(),
+        ]);
         setSummary(summaryData);
         setCategoryStats(statsData);
+        setMemberCounts({
+          regular: membersData.filter((m) => m.member_type === 'regular').length,
+          non_rotation: membersData.filter((m) => m.member_type === 'non_rotation').length,
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load summary');
         console.error('Error loading summary:', err);
@@ -85,6 +114,7 @@ export default function Dashboard({ onNavigateToTransactions, onNavigateToYearly
   const imamSalaryTotal = findCategoryTotal(IMAM_SALARY_CATEGORY, 'expense');
   const staffSalaryOnlyTotal = findCategoryTotal(STAFF_SALARY_CATEGORY, 'expense');
   const staffSalaryCombinedTotal = imamSalaryTotal + staffSalaryOnlyTotal;
+  const totalMembersCount = memberCounts.regular + memberCounts.non_rotation;
 
   const salaryDonutData = useMemo(
     () =>
@@ -93,6 +123,14 @@ export default function Dashboard({ onNavigateToTransactions, onNavigateToYearly
         { category: STAFF_SALARY_CATEGORY, total: staffSalaryOnlyTotal },
       ].filter((entry) => entry.total > 0),
     [imamSalaryTotal, staffSalaryOnlyTotal]
+  );
+
+  const membersDonutData = useMemo(
+    () =>
+      (['regular', 'non_rotation'] as MemberType[])
+        .map((type) => ({ type, count: memberCounts[type] }))
+        .filter((entry) => entry.count > 0),
+    [memberCounts]
   );
 
   if (isAdmin && loading) {
@@ -127,6 +165,11 @@ export default function Dashboard({ onNavigateToTransactions, onNavigateToYearly
     navigate({ type: 'expense', category });
   };
 
+  const handleMembersSliceClick = (type: MemberType) => {
+    setIsMembersModalOpen(false);
+    onNavigateToMembers?.(type);
+  };
+
   return (
     <>
       <div className="dashboard-container">
@@ -136,12 +179,7 @@ export default function Dashboard({ onNavigateToTransactions, onNavigateToYearly
           </Col>
         </Row>
 
-        {!isAdmin && !isLoggedIn && (
-          <div className="dashboard-login-prompt">
-            <LockOutlined />
-            <span>Log in as an admin to explore financial details, charts, and more.</span>
-          </div>
-        )}
+        {!isAdmin && !isLoggedIn && <InlineLoginForm />}
 
         {!isAdmin && isLoggedIn && <ProfileView variant="embedded" />}
 
@@ -225,6 +263,19 @@ export default function Dashboard({ onNavigateToTransactions, onNavigateToYearly
                   </span>
                 </div>
               </div>
+
+              <div
+                className="stat-tile members-tile clickable"
+                onClick={() => setIsMembersModalOpen(true)}
+              >
+                <div className="stat-tile-icon members-icon">
+                  <UserOutlined />
+                </div>
+                <div className="stat-tile-body">
+                  <span className="stat-tile-label">Members</span>
+                  <span className="stat-tile-value members-value">{totalMembersCount}</span>
+                </div>
+              </div>
             </div>
 
             {/* Charts */}
@@ -266,6 +317,46 @@ export default function Dashboard({ onNavigateToTransactions, onNavigateToYearly
               </PieChart>
             </ResponsiveContainer>
             <p className="salary-modal-hint">Click a segment to view its transactions.</p>
+          </>
+        )}
+      </Modal>
+
+      {/* Members breakdown popup */}
+      <Modal
+        title="Members Breakdown"
+        open={isMembersModalOpen}
+        onCancel={() => setIsMembersModalOpen(false)}
+        footer={null}
+        width={420}
+      >
+        {membersDonutData.length === 0 ? (
+          <Alert message="No members added yet." type="info" showIcon />
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={membersDonutData}
+                  dataKey="count"
+                  nameKey="type"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={2}
+                  onClick={(entry) => handleMembersSliceClick((entry as unknown as { type: MemberType }).type)}
+                  cursor="pointer"
+                  // label={(entry) => MEMBER_TYPE_LABELS[(entry as unknown as { type: MemberType }).type]}
+                >
+                  {membersDonutData.map((entry, index) => (
+                    <Cell key={entry.type} fill={MEMBER_TYPE_COLORS[index % MEMBER_TYPE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip
+                  formatter={(value, name) => [value, MEMBER_TYPE_LABELS[name as MemberType]]}
+                />
+                <Legend formatter={(value) => MEMBER_TYPE_LABELS[value as MemberType]} />
+              </PieChart>
+            </ResponsiveContainer>
+            <p className="salary-modal-hint">Click a segment to view those members.</p>
           </>
         )}
       </Modal>

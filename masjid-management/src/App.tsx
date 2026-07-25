@@ -7,6 +7,7 @@ import {
   TeamOutlined,
   CalendarOutlined,
   WalletOutlined,
+  SoundOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   UserOutlined,
@@ -19,12 +20,18 @@ import YearlyScheduleView from './components/Members/YearlyScheduleView';
 import ProfileView from './components/Members/ProfileView';
 import MemberAvatar from './components/Members/MemberAvatar';
 import SettingsPage from './components/SettingsPage';
+import Announcements from './components/Announcements';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
 import { useAuth } from './context/AuthContext';
-import { getMyProfile } from './services/api';
+import { getMyProfile, type MemberType } from './services/api';
 import './App.css';
 import type { MenuProps } from 'antd';
+
+// MemberAvatar looks up /assets/members/<id>.<ext> - reusing it for the
+// admin's header icon by pointing at the same asset naming convention
+// (public/assets/members/masjidrahma.jpg) rather than a separate component.
+const ADMIN_AVATAR_ID = 'masjidrahma';
 
 function App() {
   const { theme } = useSettings();
@@ -35,10 +42,16 @@ function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [memberUniqueId, setMemberUniqueId] = useState<string | null>(null);
   const [transactionsFilter, setTransactionsFilter] = useState<TransactionFilter | null>(null);
+  const [membersTypeFilter, setMembersTypeFilter] = useState<MemberType | undefined>(undefined);
 
   const navigateToTransactions = (filter: TransactionFilter) => {
     setTransactionsFilter(filter);
     setActiveKey('transactions');
+  };
+
+  const navigateToMembers = (typeFilter?: MemberType) => {
+    setMembersTypeFilter(typeFilter);
+    setActiveKey('members');
   };
 
   useEffect(() => {
@@ -60,10 +73,10 @@ function App() {
   }, [isLoggedIn, isAdmin, memberId]);
 
   useEffect(() => {
-    if (!isAdmin && activeKey === 'transactions') {
+    if (!isAdmin && (activeKey === 'transactions' || activeKey === 'announcements')) {
       setActiveKey('dashboard');
     }
-    if (!isLoggedIn && activeKey === 'profile') {
+    if (!isLoggedIn && (activeKey === 'profile' || activeKey === 'members' || activeKey === 'settings')) {
       setActiveKey('dashboard');
     }
   }, [isAdmin, isLoggedIn, activeKey]);
@@ -81,6 +94,11 @@ function App() {
             icon: <FileTextOutlined />,
             label: 'Transactions',
           },
+          {
+            key: 'announcements',
+            icon: <SoundOutlined />,
+            label: 'Announcements',
+          },
         ]
       : []),
     ...(isLoggedIn
@@ -92,28 +110,34 @@ function App() {
           },
         ]
       : []),
-    {
-      key: 'members',
-      icon: <TeamOutlined />,
-      label: 'Members',
-    },
+    ...(isLoggedIn
+      ? [
+          {
+            key: 'members',
+            icon: <TeamOutlined />,
+            label: 'Members',
+          },
+        ]
+      : []),
     {
       key: 'yearly-schedule',
       icon: <CalendarOutlined />,
       label: 'Yearly Schedule',
     },
-    {
-      key: 'settings',
-      icon: <SettingOutlined />,
-      label: 'Settings',
-    },
+    ...(isLoggedIn
+      ? [
+          {
+            key: 'settings',
+            icon: <SettingOutlined />,
+            label: 'Settings',
+          },
+        ]
+      : []),
   ];
 
   const openYearlySchedule = () => setActiveKey('yearly-schedule');
 
   const userMenuItems: MenuProps['items'] = [
-    { key: 'username', label: username, disabled: true },
-    { type: 'divider' },
     { key: 'logout', icon: <LogoutOutlined />, label: 'Logout' },
   ];
 
@@ -128,6 +152,7 @@ function App() {
           <Dashboard
             onNavigateToTransactions={navigateToTransactions}
             onNavigateToYearlySchedule={openYearlySchedule}
+            onNavigateToMembers={navigateToMembers}
           />
         );
       case 'transactions':
@@ -140,12 +165,23 @@ function App() {
           <Dashboard
             onNavigateToTransactions={navigateToTransactions}
             onNavigateToYearlySchedule={openYearlySchedule}
+            onNavigateToMembers={navigateToMembers}
           />
         );
       case 'profile':
         return isLoggedIn ? <ProfileView /> : <Dashboard />;
+      case 'announcements':
+        return isAdmin ? (
+          <Announcements />
+        ) : (
+          <Dashboard
+            onNavigateToTransactions={navigateToTransactions}
+            onNavigateToYearlySchedule={openYearlySchedule}
+            onNavigateToMembers={navigateToMembers}
+          />
+        );
       case 'members':
-        return <MembersList />;
+        return <MembersList initialTypeFilter={membersTypeFilter} />;
       case 'yearly-schedule':
         return <YearlyScheduleView />;
       case 'settings':
@@ -157,6 +193,7 @@ function App() {
 
   const handleMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'transactions') setTransactionsFilter(null);
+    if (e.key === 'members') setMembersTypeFilter(undefined);
     setActiveKey(e.key);
     if (isMobile) setCollapsed(true);
   };
@@ -207,19 +244,24 @@ function App() {
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isLoggedIn ? (
-              <Dropdown
-                menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
-                trigger={['click']}
-                placement="bottomRight"
-              >
-                <button type="button" className="app-header-user-btn">
-                  {!isAdmin && memberUniqueId ? (
-                    <MemberAvatar key={memberUniqueId} uniqueId={memberUniqueId} size={28} />
-                  ) : (
-                    <UserOutlined />
-                  )}
-                </button>
-              </Dropdown>
+              <div className="app-header-user">
+                <span className="app-header-user-id">{username}</span>
+                <Dropdown
+                  menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
+                  trigger={['click']}
+                  placement="bottomRight"
+                >
+                  <button type="button" className="app-header-user-btn">
+                    {!isAdmin && memberUniqueId ? (
+                      <MemberAvatar key={memberUniqueId} uniqueId={memberUniqueId} size={28} />
+                    ) : isAdmin ? (
+                      <MemberAvatar key={ADMIN_AVATAR_ID} uniqueId={ADMIN_AVATAR_ID} size={28} />
+                    ) : (
+                      <UserOutlined />
+                    )}
+                  </button>
+                </Dropdown>
+              </div>
             ) : (
               <Button
                 className="app-header-auth-btn"

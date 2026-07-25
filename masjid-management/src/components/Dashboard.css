@@ -9,21 +9,6 @@
   margin-bottom: 24px;
 }
 
-.dashboard-login-prompt {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 20px 16px;
-  margin-bottom: 24px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px dashed #8c8c8c;
-  border-radius: 8px;
-  color: #595959;
-  font-size: 15px;
-  text-align: center;
-}
-
 .dashboard-loading {
   display: flex;
   justify-content: center;
@@ -117,6 +102,10 @@
   border-left: 4px solid #4a3aa7;
 }
 
+.members-tile {
+  border-left: 4px solid #1baf7a;
+}
+
 .income-icon,
 .income-value {
   color: #52c41a;
@@ -162,6 +151,14 @@
 }
 .staff-icon {
   background: rgba(74, 58, 167, 0.1) !important;
+}
+
+.members-icon,
+.members-value {
+  color: #1baf7a;
+}
+.members-icon {
+  background: rgba(27, 175, 122, 0.1) !important;
 }
 
 .salary-modal-hint {

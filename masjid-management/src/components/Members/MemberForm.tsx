@@ -27,6 +27,7 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
           active: values.active,
           paymentAmount: values.paymentAmount ?? null,
           paymentFrequency: values.paymentFrequency ?? null,
+          memberType: values.memberType,
         });
         message.success('Member updated successfully!');
       } else {
@@ -37,6 +38,7 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
           memberCount: values.memberCount,
           paymentAmount: values.paymentAmount ?? null,
           paymentFrequency: values.paymentFrequency ?? null,
+          memberType: values.memberType,
         });
         message.success('Member added successfully!');
       }
@@ -74,8 +76,9 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
                 active: member.active,
                 paymentAmount: member.payment_amount ?? undefined,
                 paymentFrequency: member.payment_frequency ?? undefined,
+                memberType: member.member_type,
               }
-            : { active: true }
+            : { active: true, memberType: 'regular' }
         }
       >
         <Form.Item
@@ -132,6 +135,20 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
             options={[
               { label: 'Monthly', value: 'monthly' },
               { label: 'Yearly', value: 'yearly' },
+            ]}
+          />
+        </Form.Item>
+
+        <Form.Item
+          label="Food Supply Rotation"
+          name="memberType"
+          rules={[{ required: true, message: 'Please select a rotation type' }]}
+          tooltip="Non-rotation members are managed normally (payments, profile, etc.) but are never included in the food-day schedule or assignment."
+        >
+          <Select
+            options={[
+              { label: 'Regular (included in food rotation)', value: 'regular' },
+              { label: 'Non-Rotation (no food duty)', value: 'non_rotation' },
             ]}
           />
         </Form.Item>

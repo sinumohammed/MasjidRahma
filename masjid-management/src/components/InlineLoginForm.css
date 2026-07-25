@@ -1,0 +1,49 @@
+.inline-login-card {
+  max-width: 380px;
+  margin: 0 auto 24px;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.inline-login-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.inline-login-form {
+  width: 100%;
+}
+
+:root[data-theme='dark'] .inline-login-card {
+  background: #1f1f1f;
+  border-color: #303030;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme='dark'] .inline-login-header {
+  color: #e5e7eb;
+}
+
+:root[data-theme='dark'] .inline-login-form .ant-form-item-label > label {
+  color: #a0a0a0;
+}
+
+:root[data-theme='dark'] .inline-login-form .ant-input,
+:root[data-theme='dark'] .inline-login-form .ant-input-affix-wrapper {
+  background: #141414;
+  border-color: #434343;
+  color: #e5e7eb;
+}
+
+:root[data-theme='dark'] .inline-login-form .ant-input::placeholder {
+  color: #737373;
+}

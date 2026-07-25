@@ -101,7 +101,7 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
     setModalOpen(true);
     try {
       const data = await getMembers();
-      setMembers(data.filter((m) => m.active));
+      setMembers(data.filter((m) => m.active && m.member_type === 'regular'));
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Failed to load members');
     }

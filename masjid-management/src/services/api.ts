@@ -65,6 +65,8 @@ export interface AuthResponse {
   memberId: string | null;
 }
 
+export type MemberType = 'regular' | 'non_rotation';
+
 export interface Member {
   id: string;
   unique_id: string;
@@ -77,6 +79,7 @@ export interface Member {
   created_at: string;
   payment_amount?: number | null;
   payment_frequency?: 'monthly' | 'yearly' | null;
+  member_type: MemberType;
 }
 
 export interface DuesInfo {
@@ -269,6 +272,7 @@ export const createMember = async (
     memberCount: number;
     paymentAmount?: number | null;
     paymentFrequency?: 'monthly' | 'yearly' | null;
+    memberType?: MemberType;
   }
 ): Promise<Member> => {
   const response = await fetch(`${API_BASE_URL}/members`, {
@@ -291,6 +295,7 @@ export const updateMember = async (
     active: boolean;
     paymentAmount?: number | null;
     paymentFrequency?: 'monthly' | 'yearly' | null;
+    memberType?: MemberType;
   }
 ): Promise<Member> => {
   const response = await fetch(`${API_BASE_URL}/members/${id}`, {
@@ -417,4 +422,84 @@ export const unsubscribePush = async (endpoint: string): Promise<void> => {
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to unsubscribe from push notifications');
+};
+
+export interface PendingDuesMember {
+  id: string;
+  unique_id: string;
+  name: string;
+  phone: string;
+  payment_frequency: 'monthly' | 'yearly';
+  due: number;
+  missedMonths: string[] | null;
+  hasPushSubscription: boolean;
+}
+
+export interface PushSendResult {
+  sent: number;
+  failed: number;
+  reason?: string;
+}
+
+export const getPendingDuesMembers = async (): Promise<PendingDuesMember[]> => {
+  const response = await fetch(`${API_BASE_URL}/admin/pending-dues`, { headers: { ...authHeaders() } });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to fetch pending dues');
+  return result;
+};
+
+export const remindMember = async (memberId: string): Promise<PushSendResult> => {
+  const response = await fetch(`${API_BASE_URL}/push/remind/${memberId}`, {
+    method: 'POST',
+    headers: { ...authHeaders() },
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to send reminder');
+  return result;
+};
+
+export const remindAllPending = async (): Promise<PushSendResult & { checked: number; remindersSent: number }> => {
+  const response = await fetch(`${API_BASE_URL}/push/remind-all-pending`, {
+    method: 'POST',
+    headers: { ...authHeaders() },
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to send reminders');
+  return result;
+};
+
+export const sendAnnouncement = async (title: string, message: string): Promise<PushSendResult> => {
+  const response = await fetch(`${API_BASE_URL}/push/announce`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ title, message }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to send announcement');
+  return result;
+};
+
+export interface Contact {
+  id: string;
+  group_key: 'committee' | 'muaddin' | 'query';
+  name: string;
+  phone: string | null;
+  position: number;
+}
+
+export const getContacts = async (): Promise<Contact[]> => {
+  const response = await fetch(`${API_BASE_URL}/contacts`);
+  if (!response.ok) throw new Error('Failed to fetch contacts');
+  return response.json();
+};
+
+export const updateContact = async (id: string, name: string, phone: string | null): Promise<Contact> => {
+  const response = await fetch(`${API_BASE_URL}/contacts/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name, phone }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to update contact');
+  return result;
 };

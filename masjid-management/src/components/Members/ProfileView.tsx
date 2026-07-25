@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Card, Table, Tag, Descriptions, Spin, Alert, Statistic, Row, Col, Select, Empty, Switch, message } from 'antd';
+import { Card, Table, Tag, Spin, Alert, Statistic, Row, Col, Select, Empty } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   getMyProfile,
   getMemberProfile,
   getMembers,
-  getVapidPublicKey,
-  subscribePush,
-  unsubscribePush,
   type MyProfile,
   type Member,
   type MonthlyDueEntry,
@@ -15,7 +12,6 @@ import {
 } from '../../services/api';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
-import { urlBase64ToUint8Array } from '../../utils/push';
 import MemberAvatar from './MemberAvatar';
 import './ProfileView.css';
 
@@ -31,69 +27,6 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [loading, setLoading] = useState(!isAdmin);
   const [error, setError] = useState<string | null>(null);
-
-  const showNotificationsCard = variant === 'page' && !isAdmin;
-  const [pushSupported, setPushSupported] = useState(false);
-  const [pushSubscribed, setPushSubscribed] = useState(false);
-  const [pushBusy, setPushBusy] = useState(false);
-  const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(null);
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
-
-  useEffect(() => {
-    if (!showNotificationsCard) return;
-    const supported = 'serviceWorker' in navigator && 'PushManager' in window;
-    setPushSupported(supported);
-    if (!supported) return;
-
-    setNotificationPermission(Notification.permission);
-    getVapidPublicKey()
-      .then(setVapidPublicKey)
-      .catch(() => setVapidPublicKey(null));
-    navigator.serviceWorker.ready
-      .then((registration) => registration.pushManager.getSubscription())
-      .then((sub) => setPushSubscribed(!!sub))
-      .catch(() => {
-        // Non-critical - toggle just starts in the "off" state.
-      });
-  }, [showNotificationsCard]);
-
-  const handleTogglePush = async (checked: boolean) => {
-    setPushBusy(true);
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      if (checked) {
-        const permission = await Notification.requestPermission();
-        setNotificationPermission(permission);
-        if (permission !== 'granted') {
-          message.error('Notification permission was not granted');
-          return;
-        }
-        if (!vapidPublicKey) {
-          message.error('Push notifications are not configured on the server');
-          return;
-        }
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-        });
-        await subscribePush(subscription.toJSON() as PushSubscriptionJSON);
-        setPushSubscribed(true);
-        message.success('Food-day reminders enabled');
-      } else {
-        const subscription = await registration.pushManager.getSubscription();
-        if (subscription) {
-          await subscription.unsubscribe();
-          await unsubscribePush(subscription.endpoint);
-        }
-        setPushSubscribed(false);
-        message.success('Food-day reminders disabled');
-      }
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : 'Failed to update reminder settings');
-    } finally {
-      setPushBusy(false);
-    }
-  };
 
   useEffect(() => {
     if (isAdmin) {
@@ -195,29 +128,18 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
 
   return (
     <div className={containerClass}>
-      {variant === 'page' && (
+      {variant === 'page' && isAdmin && (
         <div className="profile-view-header-row">
-          {profile && (
-            <div className="profile-view-header">
-              <MemberAvatar key={profile.member.unique_id} uniqueId={profile.member.unique_id} size={72} className="profile-view-avatar" />
-              <div className="profile-view-header-info">
-                <div className="profile-view-header-name">{profile.member.name}</div>
-                <div className="profile-view-header-id">{profile.member.unique_id}</div>
-              </div>
-            </div>
-          )}
-          {isAdmin && (
-            <Select
-              className="profile-view-selector"
-              placeholder="Select a member"
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              value={selectedMemberId}
-              onChange={(value) => setSelectedMemberId(value)}
-              options={members.map((m) => ({ value: m.id, label: `${m.name} (${m.unique_id})` }))}
-            />
-          )}
+          <Select
+            className="profile-view-selector"
+            placeholder="Select a member"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            value={selectedMemberId}
+            onChange={(value) => setSelectedMemberId(value)}
+            options={members.map((m) => ({ value: m.id, label: `${m.name} (${m.unique_id})` }))}
+          />
         </div>
       )}
 
@@ -235,35 +157,20 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
         <>
           {variant === 'page' && (
             <Card className="profile-view-card">
-              <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-                <Descriptions.Item label="Member ID">{profile.member.unique_id}</Descriptions.Item>
-                <Descriptions.Item label="Name">{profile.member.name}</Descriptions.Item>
-                <Descriptions.Item label="Address">{profile.member.address}</Descriptions.Item>
-                <Descriptions.Item label="Phone">{profile.member.phone}</Descriptions.Item>
-              </Descriptions>
-            </Card>
-          )}
-
-          {showNotificationsCard && pushSupported && vapidPublicKey && (
-            <Card className="profile-view-card" title="Notifications">
-              <div className="profile-view-notification-row">
-                <div>
-                  <div className="profile-view-notification-title">Food-day reminders</div>
-                  <div className="profile-view-notification-desc">
-                    Get a push notification the day before your food-day turn.
+              <div className="profile-view-card-header">
+                <MemberAvatar key={profile.member.unique_id} uniqueId={profile.member.unique_id} size={64} className="profile-view-avatar" />
+                <div className="profile-view-card-info">
+                  <div className="profile-view-header-name">{profile.member.name}</div>
+                  <div className="profile-view-detail-line">
+                    <span className="profile-view-detail-label">Member ID:</span> {profile.member.unique_id}
                   </div>
-                  {notificationPermission === 'denied' && (
-                    <div className="profile-view-notification-warning">
-                      Notifications are blocked for this site in your browser settings — enable them there first.
-                    </div>
-                  )}
+                  <div className="profile-view-detail-line">
+                    <span className="profile-view-detail-label">Phone:</span> {profile.member.phone}
+                  </div>
+                  <div className="profile-view-detail-line">
+                    <span className="profile-view-detail-label">Address:</span> {profile.member.address}
+                  </div>
                 </div>
-                <Switch
-                  checked={pushSubscribed}
-                  loading={pushBusy}
-                  disabled={notificationPermission === 'denied'}
-                  onChange={handleTogglePush}
-                />
               </div>
             </Card>
           )}

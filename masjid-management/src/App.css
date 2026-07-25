@@ -19,6 +19,21 @@ body {
   margin-right: 4px;
 }
 
+.app-header-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-header-user-id {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
 .app-header-user-btn {
   width: 36px;
   height: 36px;
@@ -87,6 +102,11 @@ body {
 }
 
 @media (max-width: 480px) {
+  .app-header-user-id {
+    max-width: 64px;
+    font-size: 12px;
+  }
+
   .app-header-auth-btn {
     width: 40px;
     height: 40px;

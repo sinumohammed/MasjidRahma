@@ -1,0 +1,76 @@
+.announcements-container {
+  padding: 24px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  min-height: 100vh;
+  border-radius: 8px;
+}
+
+.announcements-header {
+  margin-bottom: 24px;
+}
+
+.announcements-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: #1f2937;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.announcements-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 24px;
+}
+
+.announcements-loading {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.announcements-member-name {
+  font-weight: 600;
+}
+
+.announcements-member-id {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.announcements-due-amount {
+  font-weight: 600;
+  color: #cf1322;
+}
+
+/* Dark Theme Overrides */
+:root[data-theme='dark'] .announcements-container {
+  background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
+}
+
+:root[data-theme='dark'] .announcements-title {
+  color: #e5e7eb;
+  text-shadow: none;
+}
+
+:root[data-theme='dark'] .announcements-card {
+  background: #1f1f1f;
+}
+
+:root[data-theme='dark'] .announcements-member-id {
+  color: #a0a0a0;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .announcements-container {
+    padding: 16px;
+  }
+
+  .announcements-title {
+    font-size: 22px;
+  }
+}

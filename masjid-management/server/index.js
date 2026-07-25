@@ -99,6 +99,12 @@ async function initializeDatabase() {
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS payment_amount NUMERIC`);
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS payment_frequency TEXT`);
 
+  // 'regular' members participate in the food-supply rotation (yearly
+  // schedule, today's/tomorrow's assignment, swaps); 'non_rotation' members
+  // are managed the same as any other member (payments, profile, etc.) but
+  // are never assigned food duty - see getActiveMembersOrdered().
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS member_type TEXT NOT NULL DEFAULT 'regular'`);
+
   // Optional link from a transaction to the member it's attributed to.
   await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS member_id TEXT REFERENCES members(id)`);
 
@@ -131,8 +137,43 @@ async function initializeDatabase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  // Editable Settings > Help contact entries (Masjid Committee, Muaddin,
+  // Site Related Queries) - group_key identifies which list a row belongs
+  // to; position controls display order within that group.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS contacts (
+      id TEXT PRIMARY KEY,
+      group_key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      phone TEXT,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
   console.log('Database tables ready');
   await backfillMemberUsers();
+  await seedDefaultContacts();
+}
+
+// One-time seed of the Settings > Help contacts, matching what was
+// previously hardcoded in the frontend - only runs if the table is empty,
+// so it never overwrites contacts an admin has since edited.
+async function seedDefaultContacts() {
+  const existing = await dbGet('SELECT 1 FROM contacts LIMIT 1');
+  if (existing) return;
+  const defaults = [
+    { group_key: 'committee', name: 'Moideen Kutty', phone: '9539 602 550', position: 0 },
+    { group_key: 'committee', name: 'Kunjan Pynat', phone: '9846 006 759', position: 1 },
+    { group_key: 'muaddin', name: 'Muaddin', phone: '9745 283 681', position: 0 },
+    { group_key: 'muaddin', name: 'Muaddin 2', phone: null, position: 1 },
+    { group_key: 'query', name: 'Sinu', phone: '9947 500 525', position: 0 },
+  ];
+  for (const contact of defaults) {
+    await dbRun(
+      'INSERT INTO contacts (id, group_key, name, phone, position) VALUES ($1, $2, $3, $4, $5)',
+      [uuidv4(), contact.group_key, contact.name, contact.phone, contact.position]
+    );
+  }
 }
 
 // Creates a users row (is_admin=false) for any member that predates this
@@ -253,8 +294,13 @@ function daysBetweenDates(fromDateStr, toDateStr) {
   return Math.round((to - from) / 86400000);
 }
 
+// Only 'regular' members are eligible for the food-supply rotation - this is
+// the single source of truth every rotation/schedule computation reads from
+// (ensureRotationState, advanceRotationIfNeeded, getRotationProjectionContext,
+// set-current), so a 'non_rotation' member is automatically excluded from
+// the yearly schedule and today's/tomorrow's assignment everywhere at once.
 async function getActiveMembersOrdered() {
-  return dbAll('SELECT * FROM members WHERE active = true ORDER BY position ASC');
+  return dbAll("SELECT * FROM members WHERE active = true AND member_type = 'regular' ORDER BY position ASC");
 }
 
 // Computes a member's recurring-payment standing. `today` is
@@ -558,6 +604,67 @@ function isLastDayOfMasjidMonth() {
   return todayStr.slice(0, 7) !== tomorrowStr.slice(0, 7);
 }
 
+// Shared low-level sender used by every reminder/announcement feature - sends
+// the same payload to each device subscription passed in, cleaning up any
+// that report expired (404/410) along the way.
+async function sendPushToSubscriptions(subscriptions, payload) {
+  let sent = 0;
+  let failed = 0;
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        payload
+      );
+      sent += 1;
+    } catch (err) {
+      failed += 1;
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        await dbRun('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+      }
+    }
+  }
+  return { sent, failed };
+}
+
+// Computes a member's outstanding due plus (for monthly payers) which
+// specific months are unpaid - shared by the month-end reminder job, the
+// admin's pending-payments list, and the admin's on-demand reminder button.
+async function computeMemberDueInfo(member, today) {
+  const paidRow = await dbGet(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+     WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'`,
+    [member.id]
+  );
+  const paid = Number(paidRow.total);
+  const dues = calculateDues(member, paid, today);
+  if (!dues.hasPlan || !dues.due || dues.due <= 0) {
+    return { ...dues, paid, missedMonths: null };
+  }
+  const missedMonths =
+    member.payment_frequency === 'monthly'
+      ? buildMonthlyBreakdown(member, paid, today)
+          .filter((entry) => entry.status === 'missed')
+          .map((entry) => entry.label)
+      : null;
+  return { ...dues, paid, missedMonths };
+}
+
+// Returns the JSON push payload for a member's dues reminder, or null if
+// they're not actually eligible (no due, or monthly but nothing marked
+// missed yet - e.g. the current in-progress month only, per calculateDues).
+function buildDuesReminderPayload(member, dueInfo) {
+  if (!dueInfo.hasPlan || !dueInfo.due || dueInfo.due <= 0) return null;
+  let body;
+  if (member.payment_frequency === 'monthly') {
+    if (!dueInfo.missedMonths || dueInfo.missedMonths.length === 0) return null;
+    body = `You have unpaid Masjid payment dues for: ${dueInfo.missedMonths.join(', ')} (₹${dueInfo.due.toFixed(2)}). Please settle at your earliest convenience.`;
+  } else {
+    body = `Your yearly Masjid payment of ₹${dueInfo.due.toFixed(2)} is due. Please settle at your earliest convenience.`;
+  }
+  return JSON.stringify({ title: 'Masjid Payment Reminder', body, url: '/' });
+}
+
 // Reminds members with an outstanding "Masjid payment" due at month end -
 // monthly-plan members get their specific missed months listed, yearly-plan
 // members get the outstanding amount for the year. Only active members with
@@ -581,49 +688,75 @@ async function sendMonthEndDuesReminders({ force = false } = {}) {
 
   for (const member of members) {
     checked += 1;
-    const paidRow = await dbGet(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'`,
-      [member.id]
-    );
-    const paid = Number(paidRow.total);
-    const dues = calculateDues(member, paid, today);
-    if (!dues.hasPlan || !dues.due || dues.due <= 0) continue;
-
-    let body;
-    if (member.payment_frequency === 'monthly') {
-      const missedLabels = buildMonthlyBreakdown(member, paid, today)
-        .filter((entry) => entry.status === 'missed')
-        .map((entry) => entry.label);
-      if (missedLabels.length === 0) continue;
-      body = `You have unpaid Masjid payment dues for: ${missedLabels.join(', ')} (₹${dues.due.toFixed(2)}). Please settle at your earliest convenience.`;
-    } else {
-      body = `Your yearly Masjid payment of ₹${dues.due.toFixed(2)} is due. Please settle at your earliest convenience.`;
-    }
+    const dueInfo = await computeMemberDueInfo(member, today);
+    const payload = buildDuesReminderPayload(member, dueInfo);
+    if (!payload) continue;
 
     const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [member.id]);
     if (subscriptions.length === 0) continue;
 
-    const payload = JSON.stringify({ title: 'Masjid Payment Reminder', body, url: '/' });
-    let anySent = false;
-    for (const sub of subscriptions) {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          payload
-        );
-        anySent = true;
-      } catch (err) {
-        failed += 1;
-        if (err.statusCode === 404 || err.statusCode === 410) {
-          await dbRun('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
-        }
-      }
-    }
-    if (anySent) remindersSent += 1;
+    const result = await sendPushToSubscriptions(subscriptions, payload);
+    failed += result.failed;
+    if (result.sent > 0) remindersSent += 1;
   }
 
   return { checked, remindersSent, failed, month: today.monthIndex + 1, year: today.year };
+}
+
+// Active members with an outstanding Masjid payment due, for the admin
+// "Pending Payments" list - live/on-demand, independent of the month-end
+// gate that guards the automated reminder job.
+async function getPendingDuesMembers() {
+  const today = getMasjidTodayParts();
+  const members = await dbAll(
+    `SELECT * FROM members WHERE active = true AND payment_amount IS NOT NULL AND payment_frequency IS NOT NULL ORDER BY position ASC`
+  );
+
+  const pending = [];
+  for (const member of members) {
+    const dueInfo = await computeMemberDueInfo(member, today);
+    if (!buildDuesReminderPayload(member, dueInfo)) continue;
+    const subRow = await dbGet('SELECT COUNT(*)::int as count FROM push_subscriptions WHERE member_id = $1', [member.id]);
+    pending.push({
+      id: member.id,
+      unique_id: member.unique_id,
+      name: member.name,
+      phone: member.phone,
+      payment_frequency: member.payment_frequency,
+      due: dueInfo.due,
+      missedMonths: dueInfo.missedMonths,
+      hasPushSubscription: subRow.count > 0,
+    });
+  }
+  return pending;
+}
+
+// Sends the standard dues reminder to one member on demand (an admin
+// action, not gated by last-day-of-month like the automated job).
+async function remindMemberOfDues(memberId) {
+  if (!pushEnabled) return { sent: 0, failed: 0, reason: 'push not configured' };
+  const member = await dbGet('SELECT * FROM members WHERE id = $1', [memberId]);
+  if (!member) return { sent: 0, failed: 0, reason: 'member not found' };
+
+  const today = getMasjidTodayParts();
+  const dueInfo = await computeMemberDueInfo(member, today);
+  const payload = buildDuesReminderPayload(member, dueInfo);
+  if (!payload) return { sent: 0, failed: 0, reason: 'no outstanding due' };
+
+  const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [memberId]);
+  if (subscriptions.length === 0) return { sent: 0, failed: 0, reason: 'member has no subscribed devices' };
+
+  return sendPushToSubscriptions(subscriptions, payload);
+}
+
+// Broadcasts a general announcement to every subscribed device across all
+// members - unlike the other reminders, this isn't dues/schedule-specific.
+async function sendAnnouncement(title, message) {
+  if (!pushEnabled) return { sent: 0, failed: 0, reason: 'push not configured' };
+  const subscriptions = await dbAll('SELECT * FROM push_subscriptions');
+  if (subscriptions.length === 0) return { sent: 0, failed: 0, reason: 'no subscribed devices' };
+  const payload = JSON.stringify({ title, body: message, url: '/' });
+  return sendPushToSubscriptions(subscriptions, payload);
 }
 
 // Creates, replaces, or (if memberId matches the boundary-aware computed
@@ -1092,9 +1225,14 @@ app.delete('/api/transactions/:id', requireAdmin, async (req, res) => {
 
 // Get all members (homes)
 const PAYMENT_FREQUENCIES = ['monthly', 'yearly'];
+const MEMBER_TYPES = ['regular', 'non_rotation'];
 
 function validatePaymentFrequency(paymentFrequency) {
   return paymentFrequency == null || PAYMENT_FREQUENCIES.includes(paymentFrequency);
+}
+
+function validateMemberType(memberType) {
+  return memberType == null || MEMBER_TYPES.includes(memberType);
 }
 
 app.get('/api/members', async (req, res) => {
@@ -1110,7 +1248,7 @@ app.get('/api/members', async (req, res) => {
 // the member can log in with their unique_id + phone immediately.
 app.post('/api/members', requireAdmin, async (req, res) => {
   try {
-    const { name, address, phone, memberCount, paymentAmount, paymentFrequency } = req.body;
+    const { name, address, phone, memberCount, paymentAmount, paymentFrequency, memberType } = req.body;
 
     if (!name || !address || !phone || !memberCount) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -1120,6 +1258,9 @@ app.post('/api/members', requireAdmin, async (req, res) => {
     }
     if (!validatePaymentFrequency(paymentFrequency)) {
       return res.status(400).json({ error: 'paymentFrequency must be "monthly" or "yearly"' });
+    }
+    if (!validateMemberType(memberType)) {
+      return res.status(400).json({ error: 'memberType must be "regular" or "non_rotation"' });
     }
 
     const id = uuidv4();
@@ -1137,9 +1278,9 @@ app.post('/api/members', requireAdmin, async (req, res) => {
     try {
       await client.query('BEGIN');
       await client.query(
-        `INSERT INTO members (id, unique_id, position, name, address, phone, member_count, payment_amount, payment_frequency)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [id, uniqueId, position, name, address, phone, memberCount, paymentAmount ?? null, paymentFrequency ?? null]
+        `INSERT INTO members (id, unique_id, position, name, address, phone, member_count, payment_amount, payment_frequency, member_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [id, uniqueId, position, name, address, phone, memberCount, paymentAmount ?? null, paymentFrequency ?? null, memberType || 'regular']
       );
       await client.query(
         'INSERT INTO users (id, username, password_hash, is_admin, member_id) VALUES ($1, $2, NULL, false, $3)',
@@ -1164,7 +1305,7 @@ app.post('/api/members', requireAdmin, async (req, res) => {
 app.put('/api/members/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, address, phone, memberCount, active, paymentAmount, paymentFrequency } = req.body;
+    const { name, address, phone, memberCount, active, paymentAmount, paymentFrequency, memberType } = req.body;
 
     if (!name || !address || !phone || !memberCount) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -1175,11 +1316,14 @@ app.put('/api/members/:id', requireAdmin, async (req, res) => {
     if (!validatePaymentFrequency(paymentFrequency)) {
       return res.status(400).json({ error: 'paymentFrequency must be "monthly" or "yearly"' });
     }
+    if (!validateMemberType(memberType)) {
+      return res.status(400).json({ error: 'memberType must be "regular" or "non_rotation"' });
+    }
 
     const result = await dbRun(
       `UPDATE members SET name = $1, address = $2, phone = $3, member_count = $4, active = $5,
-       payment_amount = $6, payment_frequency = $7 WHERE id = $8`,
-      [name, address, phone, memberCount, active !== false, paymentAmount ?? null, paymentFrequency ?? null, id]
+       payment_amount = $6, payment_frequency = $7, member_type = $8 WHERE id = $9`,
+      [name, address, phone, memberCount, active !== false, paymentAmount ?? null, paymentFrequency ?? null, memberType || 'regular', id]
     );
 
     if (result.rowCount === 0) {
@@ -1269,6 +1413,9 @@ app.post('/api/members/swap', requireAdmin, async (req, res) => {
     const member = await dbGet('SELECT * FROM members WHERE id = $1', [memberId]);
     if (!member) {
       return res.status(404).json({ error: 'Member not found' });
+    }
+    if (member.member_type !== 'regular') {
+      return res.status(400).json({ error: 'This member is not part of the food-supply rotation' });
     }
 
     const ctx = await getRotationProjectionContext();
@@ -1427,6 +1574,92 @@ app.post('/api/push/run-monthly-dues-check', async (req, res) => {
   }
 });
 
+// Members currently owing a Masjid payment due, for the admin Announcements
+// page's "Pending Payments" list.
+app.get('/api/admin/pending-dues', requireAdmin, async (req, res) => {
+  try {
+    const pending = await getPendingDuesMembers();
+    res.json(pending);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin sends a one-off dues reminder to a single member, on demand.
+app.post('/api/push/remind/:memberId', requireAdmin, async (req, res) => {
+  try {
+    const result = await remindMemberOfDues(req.params.memberId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin sends a dues reminder to every currently-pending member at once.
+app.post('/api/push/remind-all-pending', requireAdmin, async (req, res) => {
+  try {
+    const pending = await getPendingDuesMembers();
+    let sent = 0;
+    let failed = 0;
+    let remindersSent = 0;
+    for (const member of pending) {
+      const result = await remindMemberOfDues(member.id);
+      sent += result.sent || 0;
+      failed += result.failed || 0;
+      if ((result.sent || 0) > 0) remindersSent += 1;
+    }
+    res.json({ checked: pending.length, remindersSent, sent, failed });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin broadcasts a general announcement to every subscribed device.
+app.post('/api/push/announce', requireAdmin, async (req, res) => {
+  try {
+    const { title, message } = req.body;
+    if (!title || !message) {
+      return res.status(400).json({ error: 'Title and message are required' });
+    }
+    const result = await sendAnnouncement(title, message);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Settings > Help contacts (Masjid Committee / Muaddin / Site Related
+// Queries) - public read (shown to every visitor), admin-only edit.
+app.get('/api/contacts', async (req, res) => {
+  try {
+    const contacts = await dbAll('SELECT * FROM contacts ORDER BY group_key, position ASC');
+    res.json(contacts);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/contacts/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+    const result = await dbRun(
+      'UPDATE contacts SET name = $1, phone = $2 WHERE id = $3',
+      [name.trim(), phone?.trim() || null, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+    const updated = await dbGet('SELECT * FROM contacts WHERE id = $1', [id]);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'API is running' });
@@ -1463,4 +1696,10 @@ app.listen(PORT, () => {
   console.log(`  POST   /api/push/unsubscribe`);
   console.log(`  POST   /api/push/run-daily-check`);
   console.log(`  POST   /api/push/run-monthly-dues-check`);
+  console.log(`  GET    /api/admin/pending-dues`);
+  console.log(`  POST   /api/push/remind/:memberId`);
+  console.log(`  POST   /api/push/remind-all-pending`);
+  console.log(`  POST   /api/push/announce`);
+  console.log(`  GET    /api/contacts`);
+  console.log(`  PUT    /api/contacts/:id`);
 });

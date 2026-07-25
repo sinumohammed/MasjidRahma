@@ -180,6 +180,7 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
             title: 'Actions',
             key: 'actions',
             width: 120,
+            fixed: 'right' as const,
             render: (_: unknown, record: Transaction) => (
               <Space>
                 {record.type === 'income' && (

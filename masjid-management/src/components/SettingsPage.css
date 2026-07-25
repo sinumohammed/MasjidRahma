@@ -55,9 +55,20 @@
   color: #374151;
 }
 
+.settings-contact-row-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .settings-contact-phone {
   color: inherit;
   white-space: nowrap;
+}
+
+.settings-contact-edit-btn {
+  color: #8c8c8c;
+  flex-shrink: 0;
 }
 
 .settings-contact-nil {
