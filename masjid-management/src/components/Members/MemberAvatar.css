@@ -9,10 +9,18 @@
 }
 
 .member-avatar-photo {
+  display: block;
   flex-shrink: 0;
   border-radius: 50%;
   object-fit: cover;
+  overflow: hidden;
   background: rgba(0, 0, 0, 0.08);
+  /* Hides the alt-text/broken-image glyph some desktop browsers render (with
+     unconstrained width) in the moment before onError swaps to the fallback
+     icon - without this, that text can overflow the fixed-size box and push
+     sibling flex content (e.g. the name/id column) onto the next line. */
+  color: transparent;
+  font-size: 0;
 }
 
 :root[data-theme='dark'] .member-avatar-icon,

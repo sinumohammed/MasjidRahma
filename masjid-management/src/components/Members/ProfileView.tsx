@@ -195,29 +195,31 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
 
   return (
     <div className={containerClass}>
-      <div className="profile-view-header-row">
-        {profile && (
-          <div className="profile-view-header">
-            <MemberAvatar key={profile.member.unique_id} uniqueId={profile.member.unique_id} size={72} className="profile-view-avatar" />
-            <div className="profile-view-header-info">
-              <div className="profile-view-header-name">{profile.member.name}</div>
-              <div className="profile-view-header-id">{profile.member.unique_id}</div>
+      {variant === 'page' && (
+        <div className="profile-view-header-row">
+          {profile && (
+            <div className="profile-view-header">
+              <MemberAvatar key={profile.member.unique_id} uniqueId={profile.member.unique_id} size={72} className="profile-view-avatar" />
+              <div className="profile-view-header-info">
+                <div className="profile-view-header-name">{profile.member.name}</div>
+                <div className="profile-view-header-id">{profile.member.unique_id}</div>
+              </div>
             </div>
-          </div>
-        )}
-        {isAdmin && (
-          <Select
-            className="profile-view-selector"
-            placeholder="Select a member"
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            value={selectedMemberId}
-            onChange={(value) => setSelectedMemberId(value)}
-            options={members.map((m) => ({ value: m.id, label: `${m.name} (${m.unique_id})` }))}
-          />
-        )}
-      </div>
+          )}
+          {isAdmin && (
+            <Select
+              className="profile-view-selector"
+              placeholder="Select a member"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={selectedMemberId}
+              onChange={(value) => setSelectedMemberId(value)}
+              options={members.map((m) => ({ value: m.id, label: `${m.name} (${m.unique_id})` }))}
+            />
+          )}
+        </div>
+      )}
 
       {error && <Alert message="Error" description={error} type="error" showIcon style={{ marginBottom: 16 }} />}
 

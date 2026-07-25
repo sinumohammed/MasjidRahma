@@ -63,11 +63,16 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
 }
 
 .profile-view-avatar.member-avatar-icon,
 .profile-view-avatar.member-avatar-photo {
   border: 2px solid rgba(0, 0, 0, 0.08);
+}
+
+.profile-view-header-info {
+  min-width: 0;
 }
 
 .profile-view-header-name {

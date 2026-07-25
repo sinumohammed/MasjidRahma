@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Layout, Menu, Button, ConfigProvider, theme as antdTheme } from 'antd';
+import { Layout, Menu, Button, Dropdown, ConfigProvider, theme as antdTheme } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -111,6 +111,16 @@ function App() {
 
   const openYearlySchedule = () => setActiveKey('yearly-schedule');
 
+  const userMenuItems: MenuProps['items'] = [
+    { key: 'username', label: username, disabled: true },
+    { type: 'divider' },
+    { key: 'logout', icon: <LogoutOutlined />, label: 'Logout' },
+  ];
+
+  const handleUserMenuClick: MenuProps['onClick'] = (e) => {
+    if (e.key === 'logout') logout();
+  };
+
   const renderContent = () => {
     switch (activeKey) {
       case 'dashboard':
@@ -197,19 +207,19 @@ function App() {
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isLoggedIn ? (
-              <>
-                <span className="app-admin-username">
+              <Dropdown
+                menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
+                trigger={['click']}
+                placement="bottomRight"
+              >
+                <button type="button" className="app-header-user-btn">
                   {!isAdmin && memberUniqueId ? (
-                    <MemberAvatar key={memberUniqueId} uniqueId={memberUniqueId} size={22} className="app-header-avatar" />
+                    <MemberAvatar key={memberUniqueId} uniqueId={memberUniqueId} size={28} />
                   ) : (
                     <UserOutlined />
-                  )}{' '}
-                  {username}
-                </span>
-                <Button className="app-header-auth-btn" icon={<LogoutOutlined />} onClick={logout}>
-                  <span className="app-header-auth-btn-label">Logout</span>
-                </Button>
-              </>
+                  )}
+                </button>
+              </Dropdown>
             ) : (
               <Button
                 className="app-header-auth-btn"
