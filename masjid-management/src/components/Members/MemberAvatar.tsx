@@ -7,7 +7,9 @@ const EXTENSIONS = ['png', 'jpg', 'jpeg'] as const;
 type Extension = (typeof EXTENSIONS)[number];
 
 interface MemberAvatarProps {
-  uniqueId: string;
+  // Falsy (e.g. a transaction with no linked member) skips the photo lookup
+  // entirely and renders the fallback icon straight away.
+  uniqueId: string | null | undefined;
   size?: number;
   fallbackIcon?: ReactNode;
   className?: string;
@@ -27,7 +29,7 @@ export default function MemberAvatar({ uniqueId, size = 56, fallbackIcon, classN
 
   const style = { width: size, height: size, fontSize: Math.round(size * 0.55) };
 
-  if (extIndex >= EXTENSIONS.length) {
+  if (!uniqueId || extIndex >= EXTENSIONS.length) {
     return (
       <div className={`member-avatar-icon ${className || ''}`} style={style}>
         {fallbackIcon ?? <UserOutlined />}

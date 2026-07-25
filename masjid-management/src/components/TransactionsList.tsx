@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Table,
-  Tag,
   Button,
   Input,
   Select,
@@ -11,6 +10,7 @@ import {
   message,
   Popconfirm,
   Alert,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
@@ -30,6 +30,7 @@ import {
 } from '../services/api';
 import TransactionForm from './TransactionForm';
 import TransactionReceipt from './TransactionReceipt';
+import MemberAvatar from './Members/MemberAvatar';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
 import './TransactionsList.css';
@@ -142,15 +143,19 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
       width: 120,
     },
     {
-      title: 'Type',
-      dataIndex: 'type',
-      key: 'type',
-      width: 110,
-      render: (type: 'income' | 'expense') => (
-        <Tag color={type === 'income' ? 'green' : 'red'}>
-          {type === 'income' ? '💰 Income' : '💸 Expense'}
-        </Tag>
-      ),
+      title: 'Member',
+      dataIndex: 'member_id',
+      key: 'member_id',
+      width: 56,
+      align: 'center',
+      render: (memberId: string | null) => {
+        const member = membersById.get(memberId ?? '');
+        return (
+          <Tooltip title={member ? member.name : 'No member linked'}>
+            <MemberAvatar key={member?.unique_id ?? 'none'} uniqueId={member?.unique_id} size={28} />
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Category',
