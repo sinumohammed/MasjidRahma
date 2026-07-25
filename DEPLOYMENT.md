@@ -73,7 +73,7 @@ cp masjid-management/.env.example masjid-management/.env
   curl -X POST -H "Authorization: Bearer $RENDER_API_KEY" \
     https://api.render.com/v1/services/srv-d1dqi3h5pdvs73arktsg/deploys -d '{}'
   ```
-- **Frontend**: auto-deploys on every push to `main` via Vercel's GitHub integration (Project Settings → Root Directory = `masjid-management`). Manual redeploy: Vercel dashboard → Deployments → Redeploy, or:
+- **Frontend**: auto-deploys on every push to `main` via Vercel's GitHub integration (Project Settings → Root Directory = `masjid-management`) — this is the normal path, confirmed working as of 2026-07-25. Pushing to `main` is enough; no manual step needed. Manual redeploy (rarely needed): Vercel dashboard → Deployments → Redeploy, or:
   ```bash
   cd masjid-management
   npx vercel --prod
@@ -126,6 +126,6 @@ Render's free tier sleeps after ~15 minutes of inactivity — the first request 
 
 | Piece | Choice | Why |
 |---|---|---|
-| Frontend hosting | Vercel | Free tier, auto HTTPS, simple CLI deploy |
+| Frontend hosting | Vercel | Free tier, auto HTTPS, auto-deploys on `git push` via GitHub integration |
 | Backend hosting | Render (free Web Service) | Free tier, deploys from GitHub, supports env vars |
 | Database | Neon (Postgres, free tier) | Serverless Postgres, no card required, survives redeploys (unlike SQLite on ephemeral disk) |

@@ -54,4 +54,4 @@ Backend requires a `.env` (see `server/.env.example`): `DATABASE_URL` (Postgres/
 
 Production stack: Vercel (frontend, static Vite build) + Render (backend, free Web Service) + Neon (Postgres, free tier). Full details, live URLs, and required env vars are in `DEPLOYMENT.md` — check it first rather than re-deriving the setup. Notably:
 - Backend auto-deploys from GitHub pushes to `main` (Render webhook already configured).
-- Frontend does **not** auto-deploy from git — it's deployed manually via `vercel --prod` from `masjid-management/`.
+- Frontend also auto-deploys from GitHub pushes to `main` (Vercel's GitHub integration, Root Directory = `masjid-management`) — a plain `git push` to `main` is enough to ship both sides; the manual `vercel --prod` path in `DEPLOYMENT.md` is now just a fallback, not the normal flow.
