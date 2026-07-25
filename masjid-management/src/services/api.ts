@@ -486,6 +486,23 @@ export interface AnnouncementRecord {
   created_at: string;
 }
 
+export interface MemberNotification {
+  id: string;
+  member_id: string;
+  title: string;
+  message: string;
+  created_at: string;
+}
+
+export const getMyNotifications = async (): Promise<MemberNotification[]> => {
+  const response = await fetch(`${API_BASE_URL}/my-notifications`, {
+    headers: { ...authHeaders() },
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to load notifications');
+  return result;
+};
+
 export const getAnnouncements = async (): Promise<AnnouncementRecord[]> => {
   const response = await fetch(`${API_BASE_URL}/announcements`);
   const result = await response.json();

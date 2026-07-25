@@ -21,10 +21,11 @@ import ProfileView from './components/Members/ProfileView';
 import MemberAvatar from './components/Members/MemberAvatar';
 import SettingsPage from './components/SettingsPage';
 import Announcements from './components/Announcements';
+import MyNotifications from './components/MyNotifications';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
 import { useAuth } from './context/AuthContext';
-import { getMyProfile, getAnnouncements, type MemberType } from './services/api';
+import { getMyProfile, getAnnouncements, getMyNotifications, type MemberType } from './services/api';
 import './App.css';
 import type { MenuProps } from 'antd';
 
@@ -38,6 +39,8 @@ const ADMIN_AVATAR_ID = 'masjidrahma';
 // one account's read state into another's.
 const ANNOUNCEMENTS_READ_KEY_PREFIX = 'masjid_announcements_read_at_';
 const getAnnouncementsReadKey = (user: string | null) => `${ANNOUNCEMENTS_READ_KEY_PREFIX}${user || 'anonymous'}`;
+const MY_NOTIFICATIONS_READ_KEY_PREFIX = 'masjid_my_notifications_read_at_';
+const getMyNotificationsReadKey = (user: string | null) => `${MY_NOTIFICATIONS_READ_KEY_PREFIX}${user || 'anonymous'}`;
 
 function App() {
   const { theme } = useSettings();
@@ -50,6 +53,7 @@ function App() {
   const [transactionsFilter, setTransactionsFilter] = useState<TransactionFilter | null>(null);
   const [membersTypeFilter, setMembersTypeFilter] = useState<MemberType | undefined>(undefined);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
+  const [unreadMyNotifications, setUnreadMyNotifications] = useState(0);
 
   const navigateToTransactions = (filter: TransactionFilter) => {
     setTransactionsFilter(filter);
@@ -83,7 +87,19 @@ function App() {
     if (!isAdmin && activeKey === 'transactions') {
       setActiveKey('dashboard');
     }
-    if (!isLoggedIn && (activeKey === 'profile' || activeKey === 'members' || activeKey === 'settings' || activeKey === 'announcements')) {
+    if (
+      !isLoggedIn &&
+      (activeKey === 'profile' ||
+        activeKey === 'members' ||
+        activeKey === 'settings' ||
+        activeKey === 'announcements' ||
+        activeKey === 'my-notifications')
+    ) {
+      setActiveKey('dashboard');
+    }
+    // My Notifications is member-specific - admins have no personal
+    // notifications of their own, so bounce them to Dashboard too.
+    if (isAdmin && activeKey === 'my-notifications') {
       setActiveKey('dashboard');
     }
   }, [isAdmin, isLoggedIn, activeKey]);
@@ -115,23 +131,56 @@ function App() {
     };
   }, [isLoggedIn, username]);
 
-  // Opening Announcements (menu tap or push-notification deep link) marks
-  // everything read up to now.
+  // Poll for the My Notifications bell's unread count, same pattern as
+  // announcements above but scoped to this member's own notifications and a
+  // separate last-read timestamp.
+  useEffect(() => {
+    if (!isLoggedIn || isAdmin) {
+      setUnreadMyNotifications(0);
+      return;
+    }
+    let ignore = false;
+    const checkUnread = async () => {
+      try {
+        const list = await getMyNotifications();
+        if (ignore) return;
+        const lastReadAt = localStorage.getItem(getMyNotificationsReadKey(username));
+        const lastReadTime = lastReadAt ? new Date(lastReadAt).getTime() : 0;
+        setUnreadMyNotifications(list.filter((n) => new Date(n.created_at).getTime() > lastReadTime).length);
+      } catch {
+        // Best-effort - a failed fetch shouldn't disrupt the header.
+      }
+    };
+    checkUnread();
+    const interval = setInterval(checkUnread, 120000);
+    return () => {
+      ignore = true;
+      clearInterval(interval);
+    };
+  }, [isLoggedIn, isAdmin, username]);
+
+  // Opening Announcements or My Notifications (menu tap or push-notification
+  // deep link) marks that list read up to now.
   useEffect(() => {
     if (activeKey === 'announcements' && isLoggedIn) {
       localStorage.setItem(getAnnouncementsReadKey(username), new Date().toISOString());
       setUnreadAnnouncements(0);
     }
+    if (activeKey === 'my-notifications' && isLoggedIn) {
+      localStorage.setItem(getMyNotificationsReadKey(username), new Date().toISOString());
+      setUnreadMyNotifications(0);
+    }
   }, [activeKey, isLoggedIn, username]);
 
-  // Land directly on Announcements when opened via a push-notification tap
-  // (service worker sends url: '/?view=announcements') - only meaningful once
-  // logged in, so the redirect effect above bounces it back to Dashboard for
-  // anonymous visitors instead.
+  // Land directly on Announcements or My Notifications when opened via a
+  // push-notification tap (service worker sends url: '/?view=<key>') - only
+  // meaningful once logged in, so the redirect effect above bounces it back
+  // to Dashboard for anonymous visitors instead.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('view') === 'announcements') {
-      setActiveKey('announcements');
+    const view = params.get('view');
+    if (view === 'announcements' || view === 'my-notifications') {
+      setActiveKey(view);
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -188,6 +237,20 @@ function App() {
   const openYearlySchedule = () => setActiveKey('yearly-schedule');
 
   const userMenuItems: MenuProps['items'] = [
+    ...(!isAdmin
+      ? [
+          {
+            key: 'my-notifications',
+            icon: <BellOutlined />,
+            label: (
+              <span className="app-user-menu-announcements">
+                My Notifications
+                {unreadMyNotifications > 0 && <Badge count={unreadMyNotifications} size="small" />}
+              </span>
+            ),
+          },
+        ]
+      : []),
     {
       key: 'announcements',
       icon: <BellOutlined />,
@@ -204,6 +267,7 @@ function App() {
   const handleUserMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'logout') logout();
     if (e.key === 'announcements') setActiveKey('announcements');
+    if (e.key === 'my-notifications') setActiveKey('my-notifications');
   };
 
   const renderContent = () => {
@@ -234,6 +298,16 @@ function App() {
       case 'announcements':
         return isLoggedIn ? (
           <Announcements />
+        ) : (
+          <Dashboard
+            onNavigateToTransactions={navigateToTransactions}
+            onNavigateToYearlySchedule={openYearlySchedule}
+            onNavigateToMembers={navigateToMembers}
+          />
+        );
+      case 'my-notifications':
+        return isLoggedIn && !isAdmin ? (
+          <MyNotifications />
         ) : (
           <Dashboard
             onNavigateToTransactions={navigateToTransactions}
@@ -313,7 +387,7 @@ function App() {
                   placement="bottomRight"
                 >
                   <button type="button" className="app-header-user-btn">
-                    <Badge count={unreadAnnouncements} size="small" offset={[-2, 2]}>
+                    <Badge count={unreadAnnouncements + unreadMyNotifications} size="small" offset={[-2, 2]}>
                       {!isAdmin && memberUniqueId ? (
                         <MemberAvatar key={memberUniqueId} uniqueId={memberUniqueId} size={28} />
                       ) : isAdmin ? (

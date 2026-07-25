@@ -161,6 +161,19 @@ async function initializeDatabase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  // Individual, per-member notifications (payment received, dues reminder,
+  // food-day reminder) - deliberately a separate table from `announcements`
+  // so one member's personal notices are never visible to another member;
+  // `announcements` stays exclusively for admin broadcasts to everyone.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_notifications (
+      id TEXT PRIMARY KEY,
+      member_id TEXT NOT NULL REFERENCES members(id),
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
   console.log('Database tables ready');
   await backfillMemberUsers();
   await seedDefaultContacts();
@@ -529,6 +542,18 @@ function tomorrowInMasjidTimezone() {
   return formatDateOnly(todayObj);
 }
 
+// Persists one member's personal notification (payment received, dues
+// reminder, food-day reminder) so it can be read inside the app - kept in
+// its own table from `announcements`, so it's only ever visible to the
+// member it belongs to, never to other members or in the shared broadcast list.
+async function recordMemberNotification(memberId, title, message) {
+  if (!memberId) return;
+  await dbRun(
+    'INSERT INTO member_notifications (id, member_id, title, message) VALUES ($1, $2, $3, $4)',
+    [uuidv4(), memberId, title, message]
+  );
+}
+
 // Sends a push reminder to every device subscribed by tomorrow's food-day
 // assignee. Triggered once daily by an external scheduler (see
 // /api/push/run-daily-check) rather than an in-process timer, since this
@@ -546,11 +571,10 @@ async function sendTomorrowAssignmentReminders() {
   const member = await dbGet('SELECT * FROM members WHERE id = $1', [memberId]);
   const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [memberId]);
 
-  const payload = JSON.stringify({
-    title: 'Masjid Food Day Reminder',
-    body: `You're on food duty tomorrow (${tomorrowStr}).`,
-    url: '/',
-  });
+  const title = 'Masjid Food Day Reminder';
+  const body = `You're on food duty tomorrow (${tomorrowStr}).`;
+  await recordMemberNotification(memberId, title, body);
+  const payload = JSON.stringify({ title, body, url: '/?view=my-notifications' });
 
   let sent = 0;
   let failed = 0;
@@ -577,16 +601,21 @@ async function sendTomorrowAssignmentReminders() {
 // the category is the same either way, only the member's own payment_frequency
 // differs, which isn't relevant to the notification text itself).
 async function sendPaymentReceivedNotification(memberId, amount) {
-  if (!pushEnabled || !memberId) return;
+  if (!memberId) return;
+  const title = 'Payment Received - Masjid Rahma';
+  const body = `We've received your payment of ₹${Number(amount).toFixed(2)} as Masjid payment. Jazakallah Khair!`;
+  try {
+    await recordMemberNotification(memberId, title, body);
+  } catch (err) {
+    console.warn(`Failed to record payment-received notification: ${err.message}`);
+  }
+
+  if (!pushEnabled) return;
   try {
     const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [memberId]);
     if (subscriptions.length === 0) return;
 
-    const payload = JSON.stringify({
-      title: 'Payment Received - Masjid Rahma',
-      body: `We've received your payment of ₹${Number(amount).toFixed(2)} as Masjid payment. Jazakallah Khair!`,
-      url: '/',
-    });
+    const payload = JSON.stringify({ title, body, url: '/?view=my-notifications' });
 
     for (const sub of subscriptions) {
       try {
@@ -661,9 +690,13 @@ async function computeMemberDueInfo(member, today) {
   return { ...dues, paid, missedMonths };
 }
 
-// Returns the JSON push payload for a member's dues reminder, or null if
+// Returns the { title, body } for a member's dues reminder, or null if
 // they're not actually eligible (no due, or monthly but nothing marked
 // missed yet - e.g. the current in-progress month only, per calculateDues).
+// Kept as plain data (not a push payload) since getPendingDuesMembers() also
+// calls this just to check eligibility, for every member, on every admin
+// page load - it must stay a pure read, with no side effects like persisting
+// a notification.
 function buildDuesReminderPayload(member, dueInfo) {
   if (!dueInfo.hasPlan || !dueInfo.due || dueInfo.due <= 0) return null;
   let body;
@@ -673,7 +706,7 @@ function buildDuesReminderPayload(member, dueInfo) {
   } else {
     body = `Your yearly Masjid payment of ₹${dueInfo.due.toFixed(2)} is due. Please settle at your earliest convenience.`;
   }
-  return JSON.stringify({ title: 'Masjid Payment Reminder', body, url: '/' });
+  return { title: 'Masjid Payment Reminder', body };
 }
 
 // Reminds members with an outstanding "Masjid payment" due at month end -
@@ -700,12 +733,15 @@ async function sendMonthEndDuesReminders({ force = false } = {}) {
   for (const member of members) {
     checked += 1;
     const dueInfo = await computeMemberDueInfo(member, today);
-    const payload = buildDuesReminderPayload(member, dueInfo);
-    if (!payload) continue;
+    const reminder = buildDuesReminderPayload(member, dueInfo);
+    if (!reminder) continue;
+
+    await recordMemberNotification(member.id, reminder.title, reminder.body);
 
     const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [member.id]);
     if (subscriptions.length === 0) continue;
 
+    const payload = JSON.stringify({ ...reminder, url: '/?view=my-notifications' });
     const result = await sendPushToSubscriptions(subscriptions, payload);
     failed += result.failed;
     if (result.sent > 0) remindersSent += 1;
@@ -745,18 +781,21 @@ async function getPendingDuesMembers() {
 // Sends the standard dues reminder to one member on demand (an admin
 // action, not gated by last-day-of-month like the automated job).
 async function remindMemberOfDues(memberId) {
-  if (!pushEnabled) return { sent: 0, failed: 0, reason: 'push not configured' };
   const member = await dbGet('SELECT * FROM members WHERE id = $1', [memberId]);
   if (!member) return { sent: 0, failed: 0, reason: 'member not found' };
 
   const today = getMasjidTodayParts();
   const dueInfo = await computeMemberDueInfo(member, today);
-  const payload = buildDuesReminderPayload(member, dueInfo);
-  if (!payload) return { sent: 0, failed: 0, reason: 'no outstanding due' };
+  const reminder = buildDuesReminderPayload(member, dueInfo);
+  if (!reminder) return { sent: 0, failed: 0, reason: 'no outstanding due' };
 
+  await recordMemberNotification(memberId, reminder.title, reminder.body);
+
+  if (!pushEnabled) return { sent: 0, failed: 0, reason: 'push not configured' };
   const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [memberId]);
   if (subscriptions.length === 0) return { sent: 0, failed: 0, reason: 'member has no subscribed devices' };
 
+  const payload = JSON.stringify({ ...reminder, url: '/?view=my-notifications' });
   return sendPushToSubscriptions(subscriptions, payload);
 }
 
@@ -1624,6 +1663,23 @@ app.post('/api/push/remind-all-pending', requireAdmin, async (req, res) => {
       if ((result.sent || 0) > 0) remindersSent += 1;
     }
     res.json({ checked: pending.length, remindersSent, sent, failed });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// A member's own personal notifications (payment received, dues reminder,
+// food-day reminder) - scoped strictly to the logged-in member's own id, so
+// one member can never see another's, unlike the public /api/announcements
+// broadcast list below. Admin accounts have no memberId and just get [].
+app.get('/api/my-notifications', requireAuth, async (req, res) => {
+  try {
+    if (!req.user.memberId) return res.json([]);
+    const notifications = await dbAll(
+      'SELECT * FROM member_notifications WHERE member_id = $1 ORDER BY created_at DESC LIMIT 50',
+      [req.user.memberId]
+    );
+    res.json(notifications);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
