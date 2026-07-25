@@ -634,6 +634,45 @@ async function sendPaymentReceivedNotification(memberId, amount) {
   }
 }
 
+// Notifies a member's subscribed devices whenever an admin adds, edits, or
+// deletes a transaction attributed to them (member_id set) - covers every
+// category, not just "Masjid payment" (that create case gets the friendlier
+// wording above via sendPaymentReceivedNotification instead, to avoid
+// double-notifying).
+async function notifyMemberOfTransaction(memberId, action, transaction) {
+  if (!memberId) return;
+  const amountStr = `₹${Number(transaction.amount).toFixed(2)}`;
+  const verb = transaction.type === 'income' ? 'credited' : 'debited';
+  let title;
+  let body;
+  if (action === 'updated') {
+    title = 'Transaction Updated - Masjid Rahma';
+    body = `A ${transaction.category} transaction of ${amountStr} (${verb}) on your account was updated.`;
+  } else if (action === 'deleted') {
+    title = 'Transaction Removed - Masjid Rahma';
+    body = `A ${transaction.category} transaction of ${amountStr} (${verb}) on your account was removed.`;
+  } else {
+    title = 'Transaction Recorded - Masjid Rahma';
+    body = `A ${transaction.category} transaction of ${amountStr} (${verb}) was recorded on your account.`;
+  }
+
+  try {
+    await recordMemberNotification(memberId, title, body);
+  } catch (err) {
+    console.warn(`Failed to record transaction notification: ${err.message}`);
+  }
+
+  if (!pushEnabled) return;
+  try {
+    const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [memberId]);
+    if (subscriptions.length === 0) return;
+    const payload = JSON.stringify({ title, body, url: '/?view=my-notifications' });
+    await sendPushToSubscriptions(subscriptions, payload);
+  } catch (err) {
+    console.warn(`Failed to send transaction notification: ${err.message}`);
+  }
+}
+
 // True on the last calendar day of the current month in the masjid's
 // timezone (i.e. tomorrow rolls into a new month). No native "run on the
 // last day of the month" cron syntax exists, so the external scheduler
@@ -1155,9 +1194,6 @@ app.post('/api/transactions', requireAdmin, async (req, res) => {
     if (!type || !category || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    if (type === 'income' && category === 'Masjid payment' && !memberId) {
-      return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
-    }
 
     const id = uuidv4();
     const transactionDate = date || new Date().toISOString();
@@ -1170,8 +1206,12 @@ app.post('/api/transactions', requireAdmin, async (req, res) => {
     const newTransaction = await dbGet('SELECT * FROM transactions WHERE id = $1', [id]);
     res.status(201).json(newTransaction);
 
-    if (type === 'income' && category === 'Masjid payment' && memberId) {
-      sendPaymentReceivedNotification(memberId, amount);
+    if (memberId) {
+      if (type === 'income' && category === 'Masjid payment') {
+        sendPaymentReceivedNotification(memberId, amount);
+      } else {
+        notifyMemberOfTransaction(memberId, 'added', newTransaction);
+      }
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1187,9 +1227,6 @@ app.put('/api/transactions/:id', requireAdmin, async (req, res) => {
     if (!type || !category || !amount || !date) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    if (type === 'income' && category === 'Masjid payment' && !memberId) {
-      return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
-    }
 
     const result = await dbRun(
       `UPDATE transactions SET type = $1, category = $2, amount = $3, description = $4, date = $5, member_id = $6
@@ -1203,6 +1240,10 @@ app.put('/api/transactions/:id', requireAdmin, async (req, res) => {
 
     const updated = await dbGet('SELECT * FROM transactions WHERE id = $1', [id]);
     res.json(updated);
+
+    if (updated.member_id) {
+      notifyMemberOfTransaction(updated.member_id, 'updated', updated);
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1270,8 +1311,13 @@ app.post('/api/transactions/seed', requireAdmin, async (req, res) => {
 app.delete('/api/transactions/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    const existing = await dbGet('SELECT * FROM transactions WHERE id = $1', [id]);
     await dbRun('DELETE FROM transactions WHERE id = $1', [id]);
     res.json({ message: 'Transaction deleted' });
+
+    if (existing?.member_id) {
+      notifyMemberOfTransaction(existing.member_id, 'deleted', existing);
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
