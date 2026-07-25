@@ -125,9 +125,20 @@ function App() {
     };
     checkUnread();
     const interval = setInterval(checkUnread, 120000);
+    // Mobile browsers/PWAs throttle or suspend the interval above while the
+    // app is backgrounded, so the badge can go stale for the whole time it's
+    // minimized - re-check immediately the moment it's foregrounded again
+    // rather than waiting for the next interval tick.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') checkUnread();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', checkUnread);
     return () => {
       ignore = true;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', checkUnread);
     };
   }, [isLoggedIn, username]);
 
@@ -153,9 +164,16 @@ function App() {
     };
     checkUnread();
     const interval = setInterval(checkUnread, 120000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') checkUnread();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', checkUnread);
     return () => {
       ignore = true;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', checkUnread);
     };
   }, [isLoggedIn, isAdmin, username]);
 

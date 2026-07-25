@@ -17,19 +17,36 @@ export default function MyNotifications() {
   const [clearingAll, setClearingAll] = useState(false);
 
   useEffect(() => {
+    // Only show the full-page spinner for the very first load - later
+    // refreshes (e.g. the app resuming from the background) should update
+    // the list quietly instead of flashing a loading state over it.
+    let isFirstLoad = true;
     const load = async () => {
       try {
-        setLoading(true);
+        if (isFirstLoad) setLoading(true);
         setError(null);
         const data = await getMyNotifications();
         setNotifications(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load notifications');
       } finally {
-        setLoading(false);
+        if (isFirstLoad) setLoading(false);
+        isFirstLoad = false;
       }
     };
     load();
+    // If this page is already open when a push notification arrives while
+    // the app is minimized, nothing would otherwise refetch it until the
+    // component remounts - refetch as soon as the app is foregrounded again.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', load);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', load);
+    };
   }, []);
 
   const handleDelete = async (id: string) => {

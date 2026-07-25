@@ -38,35 +38,49 @@ export default function Announcements() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [clearingAll, setClearingAll] = useState(false);
 
-  const loadHistory = async () => {
+  const loadHistory = async (silent = false) => {
     try {
-      setHistoryLoading(true);
+      if (!silent) setHistoryLoading(true);
       setHistoryError(null);
       const data = await getAnnouncements();
       setAnnouncements(data);
     } catch (err) {
       setHistoryError(err instanceof Error ? err.message : 'Failed to load announcements');
     } finally {
-      setHistoryLoading(false);
+      if (!silent) setHistoryLoading(false);
     }
   };
 
-  const loadPending = async () => {
+  const loadPending = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       const data = await getPendingDuesMembers();
       setPending(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load pending payments');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadHistory();
     if (isAdmin) loadPending();
+    // Mirrors MyNotifications: refetch when the app is foregrounded again,
+    // since a push notification received while minimized won't otherwise
+    // update this page until it remounts.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      loadHistory(true);
+      if (isAdmin) loadPending(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   }, [isAdmin]);
 
   const handleRemind = async (member: PendingDuesMember) => {
