@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Table, Tag, Button, Input, Form, Alert, Tooltip, Popconfirm, Empty, Spin, message, List } from 'antd';
+import { Card, Table, Tag, Button, Input, Form, Alert, Tooltip, Popconfirm, Empty, Spin, message, List, Badge } from 'antd';
 import { SoundOutlined, BellOutlined, NotificationOutlined, DeleteOutlined, ClearOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -207,6 +207,8 @@ export default function Announcements() {
             title={`Send a payment reminder to ${member.name}?`}
             onConfirm={() => handleRemind(member)}
             disabled={!member.hasPushSubscription}
+            placement="topRight"
+            styles={{ root: { maxWidth: 'min(280px, calc(100vw - 24px))' } }}
           >
             <Button
               icon={<BellOutlined />}
@@ -214,6 +216,7 @@ export default function Announcements() {
               size="small"
               loading={remindingId === member.id}
               disabled={!member.hasPushSubscription}
+              className="remind-member-btn"
             />
           </Popconfirm>
         </Tooltip>
@@ -255,6 +258,7 @@ export default function Announcements() {
               description="Every member with notifications enabled will receive it."
               onConfirm={handleSendAnnouncement}
               disabled={!announceTitle.trim() || !announceMessage.trim()}
+              styles={{ root: { maxWidth: 'min(320px, calc(100vw - 32px))' } }}
             >
               <Button
                 type="primary"
@@ -271,17 +275,21 @@ export default function Announcements() {
 
       {isAdmin && (
       <Card
-        className="announcements-card"
+        className="announcements-card announcements-pending-card"
         title={<><BellOutlined /> Pending Masjid Payments</>}
         extra={
           pending.length > 0 && (
             <Popconfirm
               title="Send a reminder to every pending member?"
               onConfirm={handleRemindAll}
+              placement="bottomRight"
+              styles={{ root: { maxWidth: 'min(320px, calc(100vw - 32px))' } }}
             >
-              <Button icon={<BellOutlined />} loading={remindingAll}>
-                Remind All ({pending.length})
-              </Button>
+              <Badge count={pending.length} size="small" offset={[-4, 4]} className="remind-all-badge">
+                <Button icon={<BellOutlined />} loading={remindingAll} className="remind-all-btn">
+                  <span className="remind-all-btn-label">Remind All ({pending.length})</span>
+                </Button>
+              </Badge>
             </Popconfirm>
           )
         }
