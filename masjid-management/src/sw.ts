@@ -2,6 +2,7 @@
 import { cleanupOutdatedCaches, precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching'
 import { registerRoute, NavigationRoute } from 'workbox-routing'
 import { clientsClaim } from 'workbox-core'
+import { incrementBadgeCount } from './utils/badge'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -21,12 +22,25 @@ self.addEventListener('push', (event) => {
   if (!event.data) return
   const data = event.data.json() as PushPayload
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: '/pwa-192x192.png',
-      badge: '/pwa-192x192.png',
-      data: { url: data.url || '/' },
-    })
+    (async () => {
+      await self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: '/pwa-192x192.png',
+        badge: '/pwa-192x192.png',
+        data: { url: data.url || '/' },
+      })
+      // Home-screen icon badge count (Android Chrome; not supported by iOS
+      // home-screen web apps) - best-effort, never blocks showing the
+      // notification itself if unsupported or denied.
+      if ('setAppBadge' in navigator) {
+        try {
+          const count = await incrementBadgeCount()
+          await navigator.setAppBadge(count)
+        } catch {
+          // Badging API unavailable - not critical.
+        }
+      }
+    })()
   )
 })
 

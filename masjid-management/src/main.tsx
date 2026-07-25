@@ -5,6 +5,20 @@ import './index.css'
 import App from './App.tsx'
 import { SettingsProvider } from './context/SettingsContext.tsx'
 import { AuthProvider } from './context/AuthContext.tsx'
+import { clearBadgeCount } from './utils/badge.ts'
+
+// Clear the home-screen icon's notification-count badge whenever the user
+// actually opens/returns to the app, not just on a plain page load - covers
+// both a fresh launch and an already-open installed session regaining focus.
+const clearBadge = () => {
+  if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {})
+  clearBadgeCount().catch(() => {})
+}
+clearBadge()
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') clearBadge()
+})
+window.addEventListener('focus', clearBadge)
 
 // Installed/standalone PWA sessions are long-lived and rarely fully closed,
 // so they need to actively check for a new deploy - browsers only re-check
