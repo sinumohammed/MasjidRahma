@@ -2,8 +2,31 @@
 
 **Status**: ✅ Deployed to production (see [DEPLOYMENT.md](DEPLOYMENT.md) for live URLs and hosting details)
 **Created**: 2026-07-12
-**Last Updated**: 2026-07-18
+**Last Updated**: 2026-07-25
 **Purpose**: Islamic financial management system for income/expense tracking, member food-supply rotation, and member dues tracking
+
+---
+
+## 🆕 RECENT UPDATES (2026-07-25)
+
+### Notification/announcement badges and lists go stale while the app is backgrounded
+`unreadAnnouncements`/`unreadMyNotifications` in `App.tsx` previously only refreshed via a 2-minute `setInterval`, and `MyNotifications.tsx`/`Announcements.tsx` only fetched their lists on mount. Mobile browsers throttle/suspend background timers, so a push received while the app was minimized left the badge count and the already-open notifications/announcements page stale until the user navigated away and back (forcing a remount). All three now also listen for `visibilitychange`/`focus` and refetch immediately when the app is foregrounded again, without flashing the loading spinner on these background refreshes (a `silent`/first-load flag suppresses it).
+
+### Mobile layout fixes in Announcements.tsx
+- **"Remind All"** collapses to an icon-only button with a `Badge` count overlay on screens ≤576px (matching the existing icon-only-button-on-mobile pattern used elsewhere), and the "Pending Masjid Payments" card header no longer wraps/squishes around it.
+- **Popconfirm popups** ("Send to All Members", "Remind All", and the per-member reminder button) were overflowing the viewport on mobile - long title/description text forced a wide popup, and the per-member button sits at the table's right edge so a centered popup pushed off-screen. Fixed via `styles={{ root: { maxWidth: ... } }}` (the antd v6 way, replacing deprecated `overlayStyle`) plus edge-anchored `placement` (`topRight`/`bottomRight`) instead of centering. The per-member reminder button also grows to 36×36px on mobile for an easier tap target.
+
+### Transactions table: member avatar replaces the redundant Type column
+`TransactionsList.tsx`'s "Type" column (💰 Income / 💸 Expense tag) was redundant with the Amount column's existing green/red coloring, so it's now a "Member" column showing a small (28px) `MemberAvatar` (photo or fallback icon) for the linked member, with the member's name as a hover tooltip. `MemberAvatar` (`src/components/Members/MemberAvatar.tsx`) now accepts `uniqueId: string | null | undefined` and renders its own icon fallback immediately when falsy, so linked and unlinked rows go through the identical sized/centered box instead of a hand-rolled fallback icon misaligning with it.
+
+### Members list: notification status replaces the redundant active-status dot
+`MembersList.tsx`'s leading dot previously duplicated the `active` flag with a green/gray dot. It now shows whether the member has push notifications enabled (green = on, gray = off), backed by a new `hasPushSubscription` boolean joined onto `GET /api/members` (`server/index.js`, single `LEFT JOIN push_subscriptions` + `COUNT`, no N+1). Active members instead get a separate green checkmark (`CheckCircleFilled`) next to their name.
+
+### Fix: push unsubscribe left stale subscription rows behind
+`POST /api/push/unsubscribe` only deleted the row matching the client's *current* endpoint. iOS Safari/PWA push endpoints can rotate (e.g. after a service-worker update), and since `subscribe` upserts by endpoint (`ON CONFLICT (endpoint)`), the old endpoint's row was never cleaned up - it just sat there as an orphan. Since `hasPushSubscription` is `COUNT(*) > 0` across all of a member's rows, a member who toggled notifications off could still show as "enabled" to the admin if a stale endpoint's row survived. Unsubscribe now deletes every row for that member, not just the current endpoint.
+
+### Vercel now auto-deploys the frontend
+The Vercel project was connected to auto-deploy via GitHub integration - a plain `git push` to `main` now ships both frontend and backend (Render already auto-deployed the backend). See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
