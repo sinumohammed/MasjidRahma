@@ -284,7 +284,7 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
         dataSource={filteredTransactions}
         rowKey="id"
         loading={loading}
-        pagination={{ pageSize: 10, showSizeChanger: true }}
+        pagination={{ defaultPageSize: 10, showSizeChanger: true }}
         className="transactions-table"
         scroll={{ x: 'max-content' }}
       />
