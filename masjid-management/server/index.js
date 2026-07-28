@@ -37,6 +37,10 @@ if (pushEnabled) {
   console.warn('VAPID keys not configured - push notifications are disabled.');
 }
 
+// Render sits behind a reverse proxy - without this, req.ip is always the
+// proxy's address instead of the visitor's, breaking IP-based geolocation.
+app.set('trust proxy', true);
+
 // Middleware
 app.use(cors(FRONTEND_URL ? { origin: FRONTEND_URL } : {}));
 app.use(express.json());
@@ -174,6 +178,29 @@ async function initializeDatabase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  // Admin-visible usage timeline: login/logout events and view/page visits,
+  // from both logged-in and anonymous visitors. IP is only used to derive a
+  // best-effort city/region/country (via getIpGeo's cache) and is not
+  // exposed to the frontend on its own.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      path TEXT,
+      username TEXT,
+      is_admin BOOLEAN,
+      member_id TEXT REFERENCES members(id),
+      ip TEXT,
+      city TEXT,
+      region TEXT,
+      country TEXT,
+      browser TEXT,
+      os TEXT,
+      device_type TEXT,
+      is_pwa BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
   console.log('Database tables ready');
   await backfillMemberUsers();
   await seedDefaultContacts();
@@ -264,6 +291,21 @@ function requireAdmin(req, res, next) {
   });
 }
 
+// Like requireAuth, but never rejects - anonymous visitors are expected
+// (used by the activity-log endpoint, which logs both logged-in and
+// anonymous page visits). req.user is set when a valid token is present.
+function optionalAuth(req, res, next) {
+  const token = getBearerToken(req);
+  if (token) {
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch {
+      // Ignore invalid/expired token - treat as anonymous rather than failing the request.
+    }
+  }
+  next();
+}
+
 // Build an optional WHERE clause for date-range filtering
 function dateRangeClause(req) {
   const { startDate, endDate } = req.query;
@@ -279,6 +321,76 @@ function dateRangeClause(req) {
     return { clause: 'WHERE date::date <= $1::date', params: [endDate] };
   }
   return { clause: '', params: [] };
+}
+
+// --- Activity/usage tracking helpers ---
+
+// Minimal, dependency-free UA parsing - good enough for "how are people
+// accessing this" analytics, not meant to be exhaustive.
+function parseUserAgent(ua) {
+  if (!ua) return { browser: null, os: null, deviceType: null };
+
+  let os = null;
+  if (/windows/i.test(ua)) os = 'Windows';
+  else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS';
+  else if (/android/i.test(ua)) os = 'Android';
+  else if (/mac os x/i.test(ua)) os = 'macOS';
+  else if (/linux/i.test(ua)) os = 'Linux';
+
+  let browser = null;
+  if (/edg\//i.test(ua)) browser = 'Edge';
+  else if (/opr\/|opera/i.test(ua)) browser = 'Opera';
+  else if (/chrome\//i.test(ua)) browser = 'Chrome';
+  else if (/crios\//i.test(ua)) browser = 'Chrome';
+  else if (/fxios\//i.test(ua)) browser = 'Firefox';
+  else if (/firefox\//i.test(ua)) browser = 'Firefox';
+  else if (/safari\//i.test(ua)) browser = 'Safari';
+
+  const deviceType = /mobile|iphone|android/i.test(ua) && !/ipad|tablet/i.test(ua)
+    ? 'mobile'
+    : /ipad|tablet/i.test(ua)
+      ? 'tablet'
+      : 'desktop';
+
+  return { browser, os, deviceType };
+}
+
+// City/region/country lookup for an IP, backed by an in-memory cache so
+// repeat visitors (the overwhelming majority of traffic here) never hit the
+// external API more than once. Best-effort only: any failure (rate limit,
+// network error, private/local IP) just leaves the geo fields null - this
+// must never block or fail the request that triggered it.
+const ipGeoCache = new Map();
+
+async function getIpGeo(ip) {
+  if (!ip) return null;
+  const normalizedIp = ip.replace('::ffff:', '');
+  if (normalizedIp === '::1' || normalizedIp === '127.0.0.1' || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(normalizedIp)) {
+    return null;
+  }
+  if (ipGeoCache.has(normalizedIp)) {
+    return ipGeoCache.get(normalizedIp);
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const response = await fetch(
+      `http://ip-api.com/json/${encodeURIComponent(normalizedIp)}?fields=status,country,regionName,city`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeout);
+    if (!response.ok) throw new Error(`geo lookup failed: ${response.status}`);
+    const data = await response.json();
+    const geo = data.status === 'success'
+      ? { city: data.city || null, region: data.regionName || null, country: data.country || null }
+      : null;
+    ipGeoCache.set(normalizedIp, geo);
+    return geo;
+  } catch (err) {
+    console.warn(`IP geolocation lookup failed for ${normalizedIp}: ${err.message}`);
+    ipGeoCache.set(normalizedIp, null);
+    return null;
+  }
 }
 
 // --- Members / food-supply rotation helpers ---
@@ -1457,7 +1569,14 @@ app.get('/api/members/me', requireAuth, async (req, res) => {
     if (req.user.isAdmin || !req.user.memberId) {
       return res.status(403).json({ error: 'Not a member account' });
     }
-    const member = await dbGet('SELECT * FROM members WHERE id = $1', [req.user.memberId]);
+    const member = await dbGet(
+      `SELECT m.*, COUNT(ps.id) > 0 AS "hasPushSubscription"
+       FROM members m
+       LEFT JOIN push_subscriptions ps ON ps.member_id = m.id
+       WHERE m.id = $1
+       GROUP BY m.id`,
+      [req.user.memberId]
+    );
     if (!member) {
       return res.status(404).json({ error: 'Member not found' });
     }
@@ -1470,7 +1589,14 @@ app.get('/api/members/me', requireAuth, async (req, res) => {
 // Admin-only: view any member's profile/dues exactly as that member would see it.
 app.get('/api/members/:id/profile', requireAdmin, async (req, res) => {
   try {
-    const member = await dbGet('SELECT * FROM members WHERE id = $1', [req.params.id]);
+    const member = await dbGet(
+      `SELECT m.*, COUNT(ps.id) > 0 AS "hasPushSubscription"
+       FROM members m
+       LEFT JOIN push_subscriptions ps ON ps.member_id = m.id
+       WHERE m.id = $1
+       GROUP BY m.id`,
+      [req.params.id]
+    );
     if (!member) {
       return res.status(404).json({ error: 'Member not found' });
     }
@@ -1852,6 +1978,113 @@ app.put('/api/contacts/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// Usage timeline: record a login/logout/page-visit event. Public/optional-auth
+// on purpose - anonymous page visits are logged too, so this can't require a
+// token. Responds immediately and enriches the row with IP geolocation in the
+// background afterwards, so a slow/failed third-party lookup never delays or
+// fails the client's fire-and-forget call.
+const ACTIVITY_EVENT_TYPES = ['login', 'logout', 'page_visit'];
+app.post('/api/activity/log', optionalAuth, async (req, res) => {
+  try {
+    const { eventType, path, isPwa } = req.body;
+    if (!ACTIVITY_EVENT_TYPES.includes(eventType)) {
+      return res.status(400).json({ error: 'Invalid eventType' });
+    }
+    const id = uuidv4();
+    const ip = req.ip || null;
+    const { browser, os, deviceType } = parseUserAgent(req.headers['user-agent']);
+    await dbRun(
+      `INSERT INTO activity_logs
+        (id, event_type, path, username, is_admin, member_id, ip, browser, os, device_type, is_pwa)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [
+        id,
+        eventType,
+        typeof path === 'string' ? path.slice(0, 200) : null,
+        req.user?.username || null,
+        req.user ? req.user.isAdmin : null,
+        req.user?.memberId || null,
+        ip,
+        browser,
+        os,
+        deviceType,
+        Boolean(isPwa),
+      ]
+    );
+    res.status(204).end();
+
+    getIpGeo(ip)
+      .then((geo) => {
+        if (!geo) return;
+        return dbRun(
+          'UPDATE activity_logs SET city = $1, region = $2, country = $3 WHERE id = $4',
+          [geo.city, geo.region, geo.country, id]
+        );
+      })
+      .catch((err) => console.warn(`Failed to store geo for activity log ${id}: ${err.message}`));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin-only usage timeline view, newest first.
+app.get('/api/activity', requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    const { eventType, isAdmin } = req.query;
+
+    const conditions = [];
+    const params = [];
+    if (ACTIVITY_EVENT_TYPES.includes(eventType)) {
+      params.push(eventType);
+      conditions.push(`event_type = $${params.length}`);
+    }
+    // Anonymous visits have is_admin NULL - those count as "non-admin" so the
+    // default (unchecked) view still shows guest traffic alongside member logins.
+    if (isAdmin === 'true') {
+      conditions.push('is_admin = true');
+    } else if (isAdmin === 'false') {
+      conditions.push('is_admin IS NOT TRUE');
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const events = await dbAll(
+      `SELECT * FROM activity_logs ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
+    const totalRow = await dbGet(`SELECT COUNT(*)::int AS count FROM activity_logs ${whereClause}`, params);
+    res.json({ events, total: totalRow.count });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Wipe the entire usage timeline. Must be registered before /api/activity/:id
+// below, or Express would match "clear" as an :id and never reach this route.
+app.delete('/api/activity/clear', requireAdmin, async (req, res) => {
+  try {
+    await dbRun('DELETE FROM activity_logs');
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Bulk-delete selected rows (the table's checkbox selection).
+app.post('/api/activity/delete', requireAdmin, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids must be a non-empty array' });
+    }
+    await dbRun('DELETE FROM activity_logs WHERE id = ANY($1)', [ids]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'API is running' });
@@ -1894,4 +2127,8 @@ app.listen(PORT, () => {
   console.log(`  POST   /api/push/announce`);
   console.log(`  GET    /api/contacts`);
   console.log(`  PUT    /api/contacts/:id`);
+  console.log(`  POST   /api/activity/log`);
+  console.log(`  GET    /api/activity`);
+  console.log(`  DELETE /api/activity/clear`);
+  console.log(`  POST   /api/activity/delete`);
 });

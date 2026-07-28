@@ -579,3 +579,76 @@ export const updateContact = async (id: string, name: string, phone: string | nu
   if (!response.ok) throw new Error(result.error || 'Failed to update contact');
   return result;
 };
+
+// Usage timeline (admin) API Functions
+
+export type ActivityEventType = 'login' | 'logout' | 'page_visit';
+
+export interface ActivityEvent {
+  id: string;
+  event_type: ActivityEventType;
+  path: string | null;
+  username: string | null;
+  is_admin: boolean | null;
+  member_id: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  browser: string | null;
+  os: string | null;
+  device_type: string | null;
+  is_pwa: boolean;
+  created_at: string;
+}
+
+// True when the app is running as an installed PWA (standalone display mode)
+// rather than a regular browser tab. `navigator.standalone` covers iOS
+// Safari, which doesn't support the `display-mode` media query.
+export function isRunningAsPwa(): boolean {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  return window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true;
+}
+
+// Fire-and-forget usage tracking - failures (offline, ad-blocker, etc.) must
+// never surface to the caller or affect the app's normal behavior.
+export const logActivity = (eventType: ActivityEventType, path?: string): void => {
+  fetch(`${API_BASE_URL}/activity/log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ eventType, path: path ?? null, isPwa: isRunningAsPwa() }),
+  }).catch(() => {});
+};
+
+export const getActivityLog = async (
+  params: { limit?: number; offset?: number; eventType?: ActivityEventType; isAdmin?: boolean } = {}
+): Promise<{ events: ActivityEvent[]; total: number }> => {
+  const query = new URLSearchParams();
+  if (params.limit) query.set('limit', String(params.limit));
+  if (params.offset) query.set('offset', String(params.offset));
+  if (params.eventType) query.set('eventType', params.eventType);
+  if (params.isAdmin !== undefined) query.set('isAdmin', String(params.isAdmin));
+  const qs = query.toString();
+  const response = await fetch(`${API_BASE_URL}/activity${qs ? `?${qs}` : ''}`, { headers: { ...authHeaders() } });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to fetch activity log');
+  return result;
+};
+
+export const deleteActivityEvents = async (ids: string[]): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/activity/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ ids }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to delete activity events');
+};
+
+export const clearActivityLog = async (): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/activity/clear`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to clear activity log');
+};

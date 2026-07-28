@@ -48,6 +48,12 @@
   border: 2px solid rgba(0, 0, 0, 0.08);
 }
 
+.profile-view-avatar-online.member-avatar-icon,
+.profile-view-avatar-online.member-avatar-photo {
+  border-color: #52c41a;
+  box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.15);
+}
+
 .profile-view-card-info {
   display: flex;
   flex-direction: column;
@@ -88,6 +94,13 @@
 :root[data-theme='dark'] .profile-view-avatar.member-avatar-icon,
 :root[data-theme='dark'] .profile-view-avatar.member-avatar-photo {
   border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Must come after the dark-theme rule above - same specificity, later in
+   source order, so the green ring wins over the generic dark border color. */
+:root[data-theme='dark'] .profile-view-avatar-online.member-avatar-icon,
+:root[data-theme='dark'] .profile-view-avatar-online.member-avatar-photo {
+  border-color: #52c41a;
 }
 
 /* Dark Theme Overrides */

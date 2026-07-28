@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Layout, Menu, Button, Dropdown, Badge, ConfigProvider, theme as antdTheme } from 'antd';
 import {
   DashboardOutlined,
@@ -12,10 +12,12 @@ import {
   MenuUnfoldOutlined,
   UserOutlined,
   LogoutOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import Dashboard, { type TransactionFilter } from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
 import MembersList from './components/Members/MembersList';
+import ActivityLog from './components/Admin/ActivityLog';
 import YearlyScheduleView from './components/Members/YearlyScheduleView';
 import ProfileView from './components/Members/ProfileView';
 import MemberAvatar from './components/Members/MemberAvatar';
@@ -25,7 +27,7 @@ import MyNotifications from './components/MyNotifications';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
 import { useAuth } from './context/AuthContext';
-import { getMyProfile, getAnnouncements, getMyNotifications, type MemberType } from './services/api';
+import { getMyProfile, getAnnouncements, getMyNotifications, logActivity, type MemberType } from './services/api';
 import './App.css';
 import type { MenuProps } from 'antd';
 
@@ -83,8 +85,18 @@ function App() {
     };
   }, [isLoggedIn, isAdmin, memberId]);
 
+  // Log a page_visit whenever the active view changes - deduped against the
+  // last-logged key so React StrictMode's double-mount in dev (and any
+  // no-op re-render that leaves activeKey unchanged) doesn't double-count.
+  const lastLoggedViewRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!isAdmin && activeKey === 'transactions') {
+    if (lastLoggedViewRef.current === activeKey) return;
+    lastLoggedViewRef.current = activeKey;
+    logActivity('page_visit', activeKey);
+  }, [activeKey]);
+
+  useEffect(() => {
+    if (!isAdmin && (activeKey === 'transactions' || activeKey === 'activity')) {
       setActiveKey('dashboard');
     }
     if (
@@ -241,6 +253,15 @@ function App() {
       icon: <CalendarOutlined />,
       label: 'Yearly Schedule',
     },
+    ...(isAdmin
+      ? [
+          {
+            key: 'activity',
+            icon: <HistoryOutlined />,
+            label: 'Activity',
+          },
+        ]
+      : []),
     ...(isLoggedIn
       ? [
           {
@@ -335,6 +356,8 @@ function App() {
         );
       case 'members':
         return <MembersList initialTypeFilter={membersTypeFilter} />;
+      case 'activity':
+        return isAdmin ? <ActivityLog /> : <Dashboard />;
       case 'yearly-schedule':
         return <YearlyScheduleView />;
       case 'settings':

@@ -158,7 +158,12 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
           {variant === 'page' && (
             <Card className="profile-view-card">
               <div className="profile-view-card-header">
-                <MemberAvatar key={profile.member.unique_id} uniqueId={profile.member.unique_id} size={64} className="profile-view-avatar" />
+                <MemberAvatar
+                  key={profile.member.unique_id}
+                  uniqueId={profile.member.unique_id}
+                  size={64}
+                  className={`profile-view-avatar ${profile.member.hasPushSubscription ? 'profile-view-avatar-online' : ''}`}
+                />
                 <div className="profile-view-card-info">
                   <div className="profile-view-header-name">{profile.member.name}</div>
                   <div className="profile-view-detail-line">

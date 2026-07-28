@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getAuthStatus, loginAdmin, setupAdmin } from '../services/api';
+import { getAuthStatus, loginAdmin, setupAdmin, logActivity } from '../services/api';
 
 const TOKEN_KEY = 'masjid_admin_token';
 const USERNAME_KEY = 'masjid_admin_username';
@@ -57,14 +57,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (loginUsername: string, password: string) => {
     const result = await loginAdmin(loginUsername, password);
     applySession(result.token, result.username, result.isAdmin, result.memberId);
+    logActivity('login');
   };
 
   const setupAccount = async (newUsername: string, password: string) => {
     const result = await setupAdmin(newUsername, password);
     applySession(result.token, result.username, result.isAdmin, result.memberId);
+    logActivity('login');
   };
 
   const logout = () => {
+    // Must fire while the token is still in localStorage - authHeaders()
+    // reads it synchronously when this call builds its fetch options, before
+    // the request actually goes out, so clearing storage right after is safe.
+    logActivity('logout');
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USERNAME_KEY);
     localStorage.removeItem(IS_ADMIN_KEY);
