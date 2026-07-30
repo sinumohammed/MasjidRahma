@@ -2,10 +2,13 @@ name: Push notification reminders
 
 on:
   schedule:
-    # 15:30 UTC = 21:00 IST (Asia/Kolkata) - comfortably before local
-    # midnight, so "tomorrow"/"last day of the month" stay unambiguous when
-    # the backend computes them.
-    - cron: '30 15 * * *'
+    # 12:27 UTC = 18:00 IST (Asia/Kolkata). Off the :00/:30 mark on purpose -
+    # GitHub Actions schedules queue at exact half-hour marks, which is why
+    # the old 15:30 UTC slot was firing 45min-2h late most days; a few
+    # minutes early of 18:00 avoids that queue and is still comfortably
+    # before local midnight, so "tomorrow"/"last day of the month" stay
+    # unambiguous when the backend computes them.
+    - cron: '27 12 * * *'
   workflow_dispatch: {}
 
 jobs:
