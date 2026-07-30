@@ -1,3 +1,6 @@
 {
-  "installCommand": "npm ci"
+  "installCommand": "npm ci && cd server && npm ci",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" }
+  ]
 }
