@@ -194,7 +194,7 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
   return (
     <>
       <Card
-        className={`today-assignment-card${isMyTurnToday ? ' my-turn' : ''}${onOpenYearlySchedule ? ' clickable' : ''}`}
+        className={`today-assignment-card${isMyTurnToday ? ' my-turn' : ''}${onOpenYearlySchedule ? ' clickable' : ''}${isAdmin ? ' has-actions' : ''}`}
         bordered={false}
         onClick={onOpenYearlySchedule}
       >

@@ -30,7 +30,7 @@
 }
 
 .today-assignment-main {
-  flex: 0 1 75%;
+  flex: 0 1 60%;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -106,7 +106,7 @@
 }
 
 .today-assignment-side {
-  flex: 0 1 25%;
+  flex: 0 1 40%;
   min-width: 120px;
   display: flex;
   flex-direction: column;
@@ -115,12 +115,24 @@
   border-left: 1px solid rgba(255, 255, 255, 0.25);
 }
 
-/* Admin's corner swap/revert icons sit top-right of the whole card, which
-   overlaps the side panel's top edge (the main column is only 75% wide) -
-   push the side panel's content down below them instead of centering it. */
-.today-assignment-split.has-actions .today-assignment-side {
-  justify-content: flex-start;
-  padding-top: 38px;
+/* Admin's corner swap/revert icons sit top-right of the whole card. On web
+   view (side-by-side columns), reserving room at the top of the whole card
+   - rather than only pushing the side panel down - keeps both columns
+   centered on the same vertical midpoint instead of the side panel
+   appearing lower than the main column. Mobile (stacked columns, see the
+   640px breakpoint below) keeps the old side-panel-only push-down, since
+   there's no shared midpoint to misalign there. */
+@media (min-width: 641px) {
+  .today-assignment-card.has-actions :global(.ant-card-body) {
+    padding-top: 46px;
+  }
+}
+
+@media (max-width: 640px) {
+  .today-assignment-split.has-actions .today-assignment-side {
+    justify-content: flex-start;
+    padding-top: 38px;
+  }
 }
 
 .today-assignment-side-label {
