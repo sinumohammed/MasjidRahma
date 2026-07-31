@@ -11,6 +11,7 @@ import {
   Popconfirm,
   Alert,
   Tooltip,
+  Tag,
 } from 'antd';
 import {
   PlusOutlined,
@@ -53,6 +54,7 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | undefined>(initialTypeFilter);
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(initialCategoryFilter);
+  const [memberFilter, setMemberFilter] = useState<string | undefined>(undefined);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -86,10 +88,19 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
     [transactions]
   );
 
+  const memberOptions = useMemo(
+    () =>
+      [...members]
+        .sort((a, b) => a.position - b.position)
+        .map((m) => ({ label: `${m.name} (${m.unique_id})`, value: m.id })),
+    [members]
+  );
+
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
       if (typeFilter && t.type !== typeFilter) return false;
       if (categoryFilter && t.category !== categoryFilter) return false;
+      if (memberFilter && t.member_id !== memberFilter) return false;
       if (dateRange) {
         const d = dayjs(t.date);
         if (d.isBefore(dateRange[0], 'day') || d.isAfter(dateRange[1], 'day')) return false;
@@ -101,7 +112,7 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
       }
       return true;
     });
-  }, [transactions, typeFilter, categoryFilter, dateRange, searchText]);
+  }, [transactions, typeFilter, categoryFilter, memberFilter, dateRange, searchText]);
 
   const handleAddClick = () => {
     setEditingTransaction(undefined);
@@ -146,13 +157,16 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
       title: 'Member',
       dataIndex: 'member_id',
       key: 'member_id',
-      width: 56,
+      width: 96,
       align: 'center',
       render: (memberId: string | null) => {
         const member = membersById.get(memberId ?? '');
         return (
           <Tooltip title={member ? member.name : 'No member linked'}>
-            <MemberAvatar key={member?.unique_id ?? 'none'} uniqueId={member?.unique_id} size={28} />
+            <div className="transaction-member-cell">
+              <MemberAvatar key={member?.unique_id ?? 'none'} uniqueId={member?.unique_id} size={28} />
+              {member && <Tag className="transaction-member-id-chip">{member.unique_id}</Tag>}
+            </div>
           </Tooltip>
         );
       },
@@ -271,6 +285,16 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
           allowClear
           className="filter-select"
           options={categories.map((c) => ({ label: c, value: c }))}
+        />
+        <Select
+          placeholder="Member"
+          value={memberFilter}
+          onChange={setMemberFilter}
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          className="filter-select"
+          options={memberOptions}
         />
         <RangePicker
           value={dateRange}
