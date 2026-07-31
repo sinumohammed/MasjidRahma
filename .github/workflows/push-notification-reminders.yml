@@ -2,28 +2,39 @@ name: Push notification reminders
 
 on:
   schedule:
-    # 12:27 UTC = 18:00 IST (Asia/Kolkata). Off the :00/:30 mark on purpose -
-    # GitHub Actions schedules queue at exact half-hour marks, which is why
-    # the old 15:30 UTC slot was firing 45min-2h late most days; a few
-    # minutes early of 18:00 avoids that queue and is still comfortably
-    # before local midnight, so "tomorrow"/"last day of the month" stay
-    # unambiguous when the backend computes them.
-    - cron: '27 12 * * *'
+    # Two food-day-before reminders, both off the :00/:30 mark on purpose -
+    # GitHub Actions schedules queue heaviest at exact half-hour marks, which
+    # is why the old 15:30 UTC slot was firing 45min-2h late most days.
+    # 01:27 UTC = 06:57 IST (Asia/Kolkata) - morning reminder.
+    - cron: '27 1 * * *'
+    # 11:27 UTC = 16:57 IST - evening reminder, and the one that also runs
+    # the month-end dues check (see the `if` condition below) so that job
+    # still only fires once a day, comfortably before local midnight so
+    # "tomorrow"/"last day of the month" stay unambiguous when the backend
+    # computes them.
+    - cron: '27 11 * * *'
   workflow_dispatch: {}
 
 jobs:
   trigger-reminders:
     runs-on: ubuntu-latest
     steps:
+      # Runs on every schedule (both morning and evening) plus manual
+      # dispatch - sendTomorrowAssignmentReminders() isn't idempotent-guarded
+      # per day, so calling it twice daily is exactly what gives each
+      # assignee two separate reminders rather than being a bug to fix.
       - name: Food-day-before reminder
         run: |
           curl -sf --max-time 60 --retry 2 --retry-connrefused --retry-delay 5 \
             -X POST "https://angular-session.onrender.com/api/push/run-daily-check" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
 
-      # No-ops most days - only actually sends on the last day of the month
-      # (see isLastDayOfMasjidMonth in server/index.js).
+      # Only on the evening schedule (or a manual run) - this job isn't
+      # idempotent-guarded either, so running it on both schedules would
+      # double-send dues reminders on the last day of the month. No-ops most
+      # days regardless (see isLastDayOfMasjidMonth in server/app.js).
       - name: Month-end dues reminder
+        if: github.event_name != 'schedule' || github.event.schedule == '27 11 * * *'
         run: |
           curl -sf --max-time 60 --retry 2 --retry-connrefused --retry-delay 5 \
             -X POST "https://angular-session.onrender.com/api/push/run-monthly-dues-check" \
