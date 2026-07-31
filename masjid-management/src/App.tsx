@@ -75,6 +75,9 @@ function App() {
     setActiveKey('banks');
   };
 
+  const openAnnouncements = () => setActiveKey('announcements');
+  const openMyNotifications = () => setActiveKey('my-notifications');
+
   useEffect(() => {
     if (!isLoggedIn || isAdmin || !memberId) {
       setMemberUniqueId(null);
@@ -331,6 +334,10 @@ function App() {
             onNavigateToYearlySchedule={openYearlySchedule}
             onNavigateToMembers={navigateToMembers}
             onNavigateToBanks={navigateToBanks}
+            onOpenAnnouncements={openAnnouncements}
+            onOpenMyNotifications={openMyNotifications}
+            unreadAnnouncements={unreadAnnouncements}
+            unreadMyNotifications={unreadMyNotifications}
           />
         );
       case 'transactions':
@@ -345,6 +352,10 @@ function App() {
             onNavigateToYearlySchedule={openYearlySchedule}
             onNavigateToMembers={navigateToMembers}
             onNavigateToBanks={navigateToBanks}
+            onOpenAnnouncements={openAnnouncements}
+            onOpenMyNotifications={openMyNotifications}
+            unreadAnnouncements={unreadAnnouncements}
+            unreadMyNotifications={unreadMyNotifications}
           />
         );
       case 'banks':
@@ -356,6 +367,10 @@ function App() {
             onNavigateToYearlySchedule={openYearlySchedule}
             onNavigateToMembers={navigateToMembers}
             onNavigateToBanks={navigateToBanks}
+            onOpenAnnouncements={openAnnouncements}
+            onOpenMyNotifications={openMyNotifications}
+            unreadAnnouncements={unreadAnnouncements}
+            unreadMyNotifications={unreadMyNotifications}
           />
         );
       case 'profile':
@@ -369,6 +384,10 @@ function App() {
             onNavigateToYearlySchedule={openYearlySchedule}
             onNavigateToMembers={navigateToMembers}
             onNavigateToBanks={navigateToBanks}
+            onOpenAnnouncements={openAnnouncements}
+            onOpenMyNotifications={openMyNotifications}
+            unreadAnnouncements={unreadAnnouncements}
+            unreadMyNotifications={unreadMyNotifications}
           />
         );
       case 'my-notifications':
@@ -380,6 +399,10 @@ function App() {
             onNavigateToYearlySchedule={openYearlySchedule}
             onNavigateToMembers={navigateToMembers}
             onNavigateToBanks={navigateToBanks}
+            onOpenAnnouncements={openAnnouncements}
+            onOpenMyNotifications={openMyNotifications}
+            unreadAnnouncements={unreadAnnouncements}
+            unreadMyNotifications={unreadMyNotifications}
           />
         );
       case 'members':

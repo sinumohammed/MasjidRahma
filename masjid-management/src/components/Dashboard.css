@@ -163,6 +163,96 @@
   background: rgba(27, 175, 122, 0.1) !important;
 }
 
+.notify-split-card {
+  display: flex;
+  align-items: stretch;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.notify-split-half {
+  flex: 1 1 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 12px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease;
+}
+
+.notify-split-half:hover {
+  background: rgba(102, 126, 234, 0.06);
+}
+
+.notify-split-divider {
+  width: 1px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.notify-split-icon {
+  font-size: 28px;
+  color: #667eea;
+}
+
+.notify-split-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.notify-split-badge {
+  position: absolute;
+  top: 10px;
+  right: 20%;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: #f5222d;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:root[data-theme='dark'] .notify-split-card {
+  background: #1f1f1f;
+}
+
+:root[data-theme='dark'] .notify-split-label {
+  color: #e5e7eb;
+}
+
+:root[data-theme='dark'] .notify-split-divider {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme='dark'] .notify-split-half:hover {
+  background: rgba(102, 126, 234, 0.12);
+}
+
+@media (max-width: 480px) {
+  .notify-split-half {
+    padding: 18px 8px;
+  }
+
+  .notify-split-icon {
+    font-size: 24px;
+  }
+
+  .notify-split-label {
+    font-size: 13px;
+  }
+}
+
 .salary-modal-hint {
   text-align: center;
   color: #8c8c8c;

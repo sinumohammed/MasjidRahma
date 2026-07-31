@@ -7,6 +7,8 @@ import {
   BankOutlined,
   TeamOutlined,
   UserOutlined,
+  BellOutlined,
+  NotificationOutlined,
 } from '@ant-design/icons';
 import {
   PieChart,
@@ -55,6 +57,10 @@ interface DashboardProps {
   onNavigateToYearlySchedule?: () => void;
   onNavigateToMembers?: (typeFilter?: MemberType) => void;
   onNavigateToBanks?: (bankId?: string) => void;
+  onOpenAnnouncements?: () => void;
+  onOpenMyNotifications?: () => void;
+  unreadAnnouncements?: number;
+  unreadMyNotifications?: number;
 }
 
 export default function Dashboard({
@@ -62,6 +68,10 @@ export default function Dashboard({
   onNavigateToYearlySchedule,
   onNavigateToMembers,
   onNavigateToBanks,
+  onOpenAnnouncements,
+  onOpenMyNotifications,
+  unreadAnnouncements = 0,
+  unreadMyNotifications = 0,
 }: DashboardProps) {
   const { currencySymbol } = useSettings();
   const { isAdmin, isLoggedIn } = useAuth();
@@ -200,6 +210,26 @@ export default function Dashboard({
         </Row>
 
         {!isAdmin && !isLoggedIn && <InlineLoginForm />}
+
+        {!isAdmin && isLoggedIn && (
+          <div className="notify-split-card">
+            <div className="notify-split-half" onClick={onOpenMyNotifications}>
+              <BellOutlined className="notify-split-icon" />
+              <span className="notify-split-label">Notifications</span>
+              {unreadMyNotifications > 0 && (
+                <span className="notify-split-badge">{unreadMyNotifications}</span>
+              )}
+            </div>
+            <div className="notify-split-divider" />
+            <div className="notify-split-half" onClick={onOpenAnnouncements}>
+              <NotificationOutlined className="notify-split-icon" />
+              <span className="notify-split-label">Announcements</span>
+              {unreadAnnouncements > 0 && (
+                <span className="notify-split-badge">{unreadAnnouncements}</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {!isAdmin && isLoggedIn && <ProfileView variant="embedded" />}
 
