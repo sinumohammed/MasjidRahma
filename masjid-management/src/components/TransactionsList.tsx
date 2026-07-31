@@ -60,6 +60,8 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | undefined>();
   const [receiptTransaction, setReceiptTransaction] = useState<Transaction | undefined>();
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const loadTransactions = async () => {
     try {
@@ -114,6 +116,13 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
     });
   }, [transactions, typeFilter, categoryFilter, memberFilter, dateRange, searchText]);
 
+  // Selection is scoped to the currently-filtered rows - clear it whenever
+  // a filter changes so a stale selected id from a now-hidden row can't be
+  // bulk-deleted without the admin seeing it.
+  useEffect(() => {
+    setSelectedRowKeys([]);
+  }, [typeFilter, categoryFilter, memberFilter, dateRange, searchText]);
+
   const handleAddClick = () => {
     setEditingTransaction(undefined);
     setIsModalOpen(true);
@@ -141,6 +150,21 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
       loadTransactions();
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Failed to delete transaction');
+    }
+  };
+
+  // No dedicated bulk-delete endpoint - fires one DELETE per selected row.
+  const handleBulkDelete = async () => {
+    try {
+      setBulkDeleting(true);
+      await Promise.all(selectedRowKeys.map((id) => deleteTransaction(id)));
+      message.success(`${selectedRowKeys.length} transaction(s) deleted`);
+      setSelectedRowKeys([]);
+      loadTransactions();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Failed to delete selected transactions');
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -236,15 +260,30 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
       <div className="transactions-header">
         <h1 className="transactions-title">📋 Transactions</h1>
         {isAdmin && (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            size="large"
-            onClick={handleAddClick}
-            className="add-transaction-btn"
-          >
-            <span className="add-transaction-btn-label">Add Transaction</span>
-          </Button>
+          <Space>
+            {selectedRowKeys.length > 0 && (
+              <Popconfirm
+                title={`Delete ${selectedRowKeys.length} selected transaction(s)?`}
+                description="This action cannot be undone."
+                onConfirm={handleBulkDelete}
+                okText="Delete"
+                okButtonProps={{ danger: true, loading: bulkDeleting }}
+              >
+                <Button danger icon={<DeleteOutlined />} loading={bulkDeleting}>
+                  Delete Selected ({selectedRowKeys.length})
+                </Button>
+              </Popconfirm>
+            )}
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              size="large"
+              onClick={handleAddClick}
+              className="add-transaction-btn"
+            >
+              <span className="add-transaction-btn-label">Add Transaction</span>
+            </Button>
+          </Space>
         )}
       </div>
 
@@ -311,6 +350,14 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
         pagination={{ defaultPageSize: 10, showSizeChanger: true }}
         className="transactions-table"
         scroll={{ x: 'max-content' }}
+        rowSelection={
+          isAdmin
+            ? {
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys as string[]),
+              }
+            : undefined
+        }
       />
 
       <Modal
