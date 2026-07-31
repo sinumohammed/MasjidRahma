@@ -497,6 +497,31 @@ function calculateDues(member, paid, today) {
   return { hasPlan: true, expected, paid, due: expected - paid, periodsOwed };
 }
 
+// Sums a member's "Masjid payment" income, scoped to match what calculateDues
+// actually measures against: monthly plans reset `expected` to just this
+// year's months every January (see calculateDues above), so `paid` must be
+// scoped to the current year too - otherwise a prior year's payment silently
+// offsets this year's due (e.g. a 2025 payment making 2026 look more caught
+// up than it is). Yearly plans are intentionally lifetime-cumulative (their
+// `expected` also accumulates since join), so paid stays lifetime there.
+async function getMemberMasjidPaymentTotal(member, today) {
+  if (member.payment_frequency === 'monthly') {
+    const paidRow = await dbGet(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+       WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'
+       AND date::date BETWEEN $2::date AND $3::date`,
+      [member.id, `${today.year}-01-01`, `${today.year}-12-31`]
+    );
+    return Number(paidRow.total);
+  }
+  const paidRow = await dbGet(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+     WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'`,
+    [member.id]
+  );
+  return Number(paidRow.total);
+}
+
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // Full current-year (Jan-Dec) month-by-month breakdown for monthly-plan
@@ -530,17 +555,12 @@ function buildMonthlyBreakdown(member, paid, today) {
 // Shared payload builder for both a member viewing their own profile and an
 // admin viewing a member's profile via the admin-only lookup route.
 async function buildMemberProfilePayload(member) {
-  const paidRow = await dbGet(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-     WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'`,
-    [member.id]
-  );
   const transactions = await dbAll(
     'SELECT * FROM transactions WHERE member_id = $1 ORDER BY date DESC',
     [member.id]
   );
   const today = getMasjidTodayParts();
-  const paid = Number(paidRow.total);
+  const paid = await getMemberMasjidPaymentTotal(member, today);
   const dues = calculateDues(member, paid, today);
   const monthlyBreakdown = buildMonthlyBreakdown(member, paid, today);
   return { member, dues, monthlyBreakdown, transactions, currentYear: today.year };
@@ -854,12 +874,7 @@ async function sendPushToSubscriptions(subscriptions, payload) {
 // specific months are unpaid - shared by the month-end reminder job, the
 // admin's pending-payments list, and the admin's on-demand reminder button.
 async function computeMemberDueInfo(member, today) {
-  const paidRow = await dbGet(
-    `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-     WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'`,
-    [member.id]
-  );
-  const paid = Number(paidRow.total);
+  const paid = await getMemberMasjidPaymentTotal(member, today);
   const dues = calculateDues(member, paid, today);
   if (!dues.hasPlan || !dues.due || dues.due <= 0) {
     return { ...dues, paid, missedMonths: null };
