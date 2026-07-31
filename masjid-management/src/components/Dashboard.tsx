@@ -20,9 +20,11 @@ import {
   getSummary,
   getCategoryStats,
   getMembers,
+  getBanks,
   type Summary,
   type CategoryStat,
   type MemberType,
+  type Bank,
 } from '../services/api';
 import ChartsPanel from './ChartsPanel';
 import TodayAssignmentCard from './Members/TodayAssignmentCard';
@@ -41,6 +43,7 @@ const MEMBER_TYPE_LABELS: Record<MemberType, string> = {
   non_rotation: 'Non-Rotation',
 };
 const MEMBER_TYPE_COLORS = ['#2a78d6', '#eda100'];
+const BANK_COLORS = ['#4a3aa7', '#eb6834', '#2a78d6', '#eda100', '#52c41a', '#cf1322'];
 
 export interface TransactionFilter {
   type?: 'income' | 'expense';
@@ -51,28 +54,33 @@ interface DashboardProps {
   onNavigateToTransactions?: (filter: TransactionFilter) => void;
   onNavigateToYearlySchedule?: () => void;
   onNavigateToMembers?: (typeFilter?: MemberType) => void;
+  onNavigateToBanks?: (bankId?: string) => void;
 }
 
 export default function Dashboard({
   onNavigateToTransactions,
   onNavigateToYearlySchedule,
   onNavigateToMembers,
+  onNavigateToBanks,
 }: DashboardProps) {
   const { currencySymbol } = useSettings();
   const { isAdmin, isLoggedIn } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
   const [memberCounts, setMemberCounts] = useState<Record<MemberType, number>>({ regular: 0, non_rotation: 0 });
+  const [banks, setBanks] = useState<Bank[]>([]);
   const [loading, setLoading] = useState(isAdmin);
   const [error, setError] = useState<string | null>(null);
   const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [isBanksModalOpen, setIsBanksModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isAdmin) {
       setSummary(null);
       setCategoryStats([]);
       setMemberCounts({ regular: 0, non_rotation: 0 });
+      setBanks([]);
       setLoading(false);
       setError(null);
       return;
@@ -82,10 +90,11 @@ export default function Dashboard({
       try {
         setLoading(true);
         setError(null);
-        const [summaryData, statsData, membersData] = await Promise.all([
+        const [summaryData, statsData, membersData, banksData] = await Promise.all([
           getSummary(),
           getCategoryStats(),
           getMembers(),
+          getBanks(),
         ]);
         setSummary(summaryData);
         setCategoryStats(statsData);
@@ -93,6 +102,7 @@ export default function Dashboard({
           regular: membersData.filter((m) => m.member_type === 'regular').length,
           non_rotation: membersData.filter((m) => m.member_type === 'non_rotation').length,
         });
+        setBanks(banksData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load summary');
         console.error('Error loading summary:', err);
@@ -133,6 +143,11 @@ export default function Dashboard({
     [memberCounts]
   );
 
+  const banksDonutData = useMemo(
+    () => banks.filter((b) => b.balance > 0),
+    [banks]
+  );
+
   if (isAdmin && loading) {
     return (
       <div className="dashboard-loading">
@@ -168,6 +183,11 @@ export default function Dashboard({
   const handleMembersSliceClick = (type: MemberType) => {
     setIsMembersModalOpen(false);
     onNavigateToMembers?.(type);
+  };
+
+  const handleBankSliceClick = (bankId: string) => {
+    setIsBanksModalOpen(false);
+    onNavigateToBanks?.(bankId);
   };
 
   return (
@@ -219,7 +239,10 @@ export default function Dashboard({
                 </div>
               </div>
 
-              <div className={`stat-tile balance-tile ${isPositive ? 'positive' : 'negative'}`}>
+              <div
+                className={`stat-tile balance-tile clickable ${isPositive ? 'positive' : 'negative'}`}
+                onClick={() => setIsBanksModalOpen(true)}
+              >
                 <div className={`stat-tile-icon balance-icon ${isPositive ? 'positive' : 'negative'}`}>
                   <WalletOutlined />
                 </div>
@@ -357,6 +380,43 @@ export default function Dashboard({
               </PieChart>
             </ResponsiveContainer>
             <p className="salary-modal-hint">Click a segment to view those members.</p>
+          </>
+        )}
+      </Modal>
+
+      {/* Bank balances breakdown popup */}
+      <Modal
+        title="Bank Balances"
+        open={isBanksModalOpen}
+        onCancel={() => setIsBanksModalOpen(false)}
+        footer={null}
+        width={420}
+      >
+        {banksDonutData.length === 0 ? (
+          <Alert message="No bank balances to show yet." type="info" showIcon />
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={banksDonutData}
+                  dataKey="balance"
+                  nameKey="name"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={2}
+                  onClick={(entry) => handleBankSliceClick((entry as unknown as Bank).id)}
+                  cursor="pointer"
+                >
+                  {banksDonutData.map((entry, index) => (
+                    <Cell key={entry.id} fill={BANK_COLORS[index % BANK_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(value) => `${currencySymbol}${Number(value).toFixed(2)}`} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+            <p className="salary-modal-hint">Click a segment to view that bank's transactions.</p>
           </>
         )}
       </Modal>

@@ -13,9 +13,11 @@ import {
   UserOutlined,
   LogoutOutlined,
   HistoryOutlined,
+  BankOutlined,
 } from '@ant-design/icons';
 import Dashboard, { type TransactionFilter } from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
+import BanksPage from './components/Banks/BanksPage';
 import MembersList from './components/Members/MembersList';
 import ActivityLog from './components/Admin/ActivityLog';
 import YearlyScheduleView from './components/Members/YearlyScheduleView';
@@ -54,6 +56,7 @@ function App() {
   const [memberUniqueId, setMemberUniqueId] = useState<string | null>(null);
   const [transactionsFilter, setTransactionsFilter] = useState<TransactionFilter | null>(null);
   const [membersTypeFilter, setMembersTypeFilter] = useState<MemberType | undefined>(undefined);
+  const [banksFilter, setBanksFilter] = useState<string | undefined>(undefined);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadMyNotifications, setUnreadMyNotifications] = useState(0);
 
@@ -65,6 +68,11 @@ function App() {
   const navigateToMembers = (typeFilter?: MemberType) => {
     setMembersTypeFilter(typeFilter);
     setActiveKey('members');
+  };
+
+  const navigateToBanks = (bankId?: string) => {
+    setBanksFilter(bankId);
+    setActiveKey('banks');
   };
 
   useEffect(() => {
@@ -96,7 +104,7 @@ function App() {
   }, [activeKey]);
 
   useEffect(() => {
-    if (!isAdmin && (activeKey === 'transactions' || activeKey === 'activity')) {
+    if (!isAdmin && (activeKey === 'transactions' || activeKey === 'activity' || activeKey === 'banks')) {
       setActiveKey('dashboard');
     }
     if (
@@ -228,6 +236,11 @@ function App() {
             icon: <FileTextOutlined />,
             label: 'Transactions',
           },
+          {
+            key: 'banks',
+            icon: <BankOutlined />,
+            label: 'Banks',
+          },
         ]
       : []),
     ...(isLoggedIn
@@ -317,6 +330,7 @@ function App() {
             onNavigateToTransactions={navigateToTransactions}
             onNavigateToYearlySchedule={openYearlySchedule}
             onNavigateToMembers={navigateToMembers}
+            onNavigateToBanks={navigateToBanks}
           />
         );
       case 'transactions':
@@ -330,6 +344,18 @@ function App() {
             onNavigateToTransactions={navigateToTransactions}
             onNavigateToYearlySchedule={openYearlySchedule}
             onNavigateToMembers={navigateToMembers}
+            onNavigateToBanks={navigateToBanks}
+          />
+        );
+      case 'banks':
+        return isAdmin ? (
+          <BanksPage initialBankId={banksFilter} />
+        ) : (
+          <Dashboard
+            onNavigateToTransactions={navigateToTransactions}
+            onNavigateToYearlySchedule={openYearlySchedule}
+            onNavigateToMembers={navigateToMembers}
+            onNavigateToBanks={navigateToBanks}
           />
         );
       case 'profile':
@@ -342,6 +368,7 @@ function App() {
             onNavigateToTransactions={navigateToTransactions}
             onNavigateToYearlySchedule={openYearlySchedule}
             onNavigateToMembers={navigateToMembers}
+            onNavigateToBanks={navigateToBanks}
           />
         );
       case 'my-notifications':
@@ -352,6 +379,7 @@ function App() {
             onNavigateToTransactions={navigateToTransactions}
             onNavigateToYearlySchedule={openYearlySchedule}
             onNavigateToMembers={navigateToMembers}
+            onNavigateToBanks={navigateToBanks}
           />
         );
       case 'members':
@@ -370,6 +398,7 @@ function App() {
   const handleMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'transactions') setTransactionsFilter(null);
     if (e.key === 'members') setMembersTypeFilter(undefined);
+    if (e.key === 'banks') setBanksFilter(undefined);
     setActiveKey(e.key);
     if (isMobile) setCollapsed(true);
   };

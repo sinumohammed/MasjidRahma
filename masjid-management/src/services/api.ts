@@ -38,6 +38,15 @@ export interface Transaction {
   date: string;
   created_at: string;
   member_id: string | null;
+  bank_id: string | null;
+}
+
+export interface Bank {
+  id: string;
+  name: string;
+  opening_balance: number;
+  balance: number;
+  created_at: string;
 }
 
 export interface Summary {
@@ -215,7 +224,10 @@ export const getCategoryStats = async (range?: DateRangeParams): Promise<Categor
 };
 
 export const createTransaction = async (
-  data: Omit<Transaction, 'id' | 'created_at' | 'member_id'> & { memberId?: string | null }
+  data: Omit<Transaction, 'id' | 'created_at' | 'member_id' | 'bank_id'> & {
+    memberId?: string | null;
+    bankId?: string | null;
+  }
 ): Promise<Transaction> => {
   const response = await fetch(`${API_BASE_URL}/transactions`, {
     method: 'POST',
@@ -228,7 +240,7 @@ export const createTransaction = async (
 
 export const updateTransaction = async (
   id: string,
-  data: Partial<Omit<Transaction, 'member_id'>> & { memberId?: string | null }
+  data: Partial<Omit<Transaction, 'member_id' | 'bank_id'>> & { memberId?: string | null; bankId?: string | null }
 ): Promise<Transaction> => {
   const response = await fetch(`${API_BASE_URL}/transactions/${id}`, {
     method: 'PUT',
@@ -245,6 +257,34 @@ export const deleteTransaction = async (id: string): Promise<void> => {
     headers: { ...authHeaders() },
   });
   if (!response.ok) throw new Error('Failed to delete transaction');
+};
+
+export const getBanks = async (): Promise<Bank[]> => {
+  const response = await fetch(`${API_BASE_URL}/banks`);
+  if (!response.ok) throw new Error('Failed to fetch banks');
+  return response.json();
+};
+
+export const createBank = async (name: string, openingBalance: number): Promise<Bank> => {
+  const response = await fetch(`${API_BASE_URL}/banks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name, openingBalance }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to create bank');
+  return result;
+};
+
+export const updateBank = async (id: string, name: string, openingBalance: number): Promise<Bank> => {
+  const response = await fetch(`${API_BASE_URL}/banks/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name, openingBalance }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to update bank');
+  return result;
 };
 
 export const seedTransactions = async (count: number): Promise<{ message: string }> => {

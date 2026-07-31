@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Form, Input, InputNumber, Button, Select, DatePicker, Space, message } from 'antd';
-import { createTransaction, updateTransaction, getMembers, type Transaction, type Member } from '../services/api';
+import { createTransaction, updateTransaction, getMembers, getBanks, type Transaction, type Member, type Bank } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import dayjs from 'dayjs';
 import './TransactionForm.css';
@@ -16,12 +16,16 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [banks, setBanks] = useState<Bank[]>([]);
   const isEditMode = Boolean(transaction);
 
   useEffect(() => {
     getMembers()
       .then((data) => setMembers(data.filter((m) => m.active)))
       .catch(() => setMembers([]));
+    getBanks()
+      .then(setBanks)
+      .catch(() => setBanks([]));
   }, []);
 
   const transactionTypes = [
@@ -31,20 +35,22 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
 
   const categories = {
     income: [
+      { label: 'Masjid payment', value: 'Masjid payment' },
+      { label: 'Jummah Collection', value: 'Jummah Collection' },
+      { label: 'General Income', value: 'General Income' },
       { label: 'Donation', value: 'Donation' },
       { label: 'Zakat', value: 'Zakat' },
       { label: 'Masjid Fund', value: 'Masjid Fund' },
       { label: 'Other Income', value: 'Other Income' },
       { label: 'Collection Drive', value: 'Collection Drive' },
       { label: 'General', value: 'General' },
-      { label: 'General Income', value: 'General Income' },
-      { label: 'Jummah Collection', value: 'Jummah Collection' },
-      { label: 'Masjid payment', value: 'Masjid payment' },
       { label: 'Nikah', value: 'Nikah' },
       { label: 'Opening Balance', value: 'Opening Balance' },
       { label: 'Sadaqah', value: 'Sadaqah' }
     ],
     expense: [
+      { label: 'Imam Salary', value: 'Imam Salary' },
+      { label: 'Staff Salary', value: 'Staff Salary' },
       { label: 'Utilities', value: 'Utilities' },
       { label: 'Maintenance', value: 'Maintenance' },
       { label: 'Supplies', value: 'Supplies' },
@@ -52,10 +58,8 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
       { label: 'Events', value: 'Events' },
       { label: 'Miscellaneous', value: 'Miscellaneous' },
       { label: 'General', value: 'General' },
-      { label: 'Imam Salary', value: 'Imam Salary' },
       { label: 'Industrial Work Salary', value: 'Industrial Work Salary' },
       { label: 'Industrial Materials', value: 'Industrial Materials' },
-      { label: 'Staff Salary', value: 'Staff Salary' },
       { label: 'Tax', value: 'Tax' }
     ],
   };
@@ -75,6 +79,7 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
         description: values.description || '',
         date: values.date ? values.date.toISOString() : new Date().toISOString(),
         memberId: values.memberId || null,
+        bankId: values.bankId || null,
       };
 
       if (isEditMode && transaction) {
@@ -113,6 +118,7 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
                 description: transaction.description,
                 date: dayjs(transaction.date),
                 memberId: transaction.member_id ?? undefined,
+                bankId: transaction.bank_id ?? undefined,
               }
             : undefined
         }
@@ -141,6 +147,19 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
             options={selectedType ? categories[selectedType as keyof typeof categories] : []}
             className="form-select"
             disabled={!selectedType}
+          />
+        </Form.Item>
+
+        {/* Bank (mandatory for every transaction - attributes it to that account's balance) */}
+        <Form.Item
+          label="Bank"
+          name="bankId"
+          rules={[{ required: true, message: 'Please select which bank this transaction is for' }]}
+        >
+          <Select
+            placeholder="Select a bank"
+            options={banks.map((b) => ({ label: b.name, value: b.id }))}
+            className="form-select"
           />
         </Form.Item>
 
