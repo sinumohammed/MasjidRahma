@@ -82,6 +82,17 @@ const pool = new Pool({
     : false,
 });
 
+// Neon (and Postgres generally) can drop an idle connection at any time
+// (e.g. Neon's serverless tier closes idle connections after inactivity).
+// pg's Pool emits 'error' on the pool itself when that happens to a client
+// sitting idle in the pool - without a listener here, Node's default
+// behavior for an unhandled EventEmitter 'error' is to throw and crash the
+// whole process. The pool recovers the connection on its own; this only
+// needs to stop that crash.
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle Postgres client:', err.message);
+});
+
 // Initialize database tables
 async function initializeDatabase() {
   await pool.query(`
@@ -230,9 +241,27 @@ async function initializeDatabase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  // Bank/committee accounts that hold the masjid's actual cash - a
+  // transaction's bank_id attributes it to one of these so each account's
+  // balance can be tracked separately, not just the org-wide total.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS banks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      opening_balance NUMERIC NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  // Nullable - transactions recorded before this feature existed have no
+  // bank attributed (their value is already baked into the seeded opening
+  // balances below), only new transactions require one (enforced in
+  // POST/PUT /api/transactions).
+  await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS bank_id TEXT REFERENCES banks(id)`);
+
   console.log('Database tables ready');
   await backfillMemberUsers();
   await seedDefaultContacts();
+  await seedDefaultBanks();
 }
 
 // One-time seed of the Settings > Help contacts, matching what was
@@ -252,6 +281,25 @@ async function seedDefaultContacts() {
     await dbRun(
       'INSERT INTO contacts (id, group_key, name, phone, position) VALUES ($1, $2, $3, $4, $5)',
       [uuidv4(), contact.group_key, contact.name, contact.phone, contact.position]
+    );
+  }
+}
+
+// One-time seed of the two starting bank/committee accounts, with their
+// real-world balance as of when this feature was introduced set as the
+// opening balance - only runs if the table is empty, so it never overwrites
+// an admin's later edits.
+async function seedDefaultBanks() {
+  const existing = await dbGet('SELECT 1 FROM banks LIMIT 1');
+  if (existing) return;
+  const defaults = [
+    { name: 'Bank', opening_balance: 85688 },
+    { name: 'Committee', opening_balance: 5696 },
+  ];
+  for (const bank of defaults) {
+    await dbRun(
+      'INSERT INTO banks (id, name, opening_balance) VALUES ($1, $2, $3)',
+      [uuidv4(), bank.name, bank.opening_balance]
     );
   }
 }
@@ -1345,13 +1393,102 @@ app.get('/api/transactions/category/stats', async (req, res) => {
   }
 });
 
+// Bank/committee accounts with their live balance (opening_balance plus
+// every transaction attributed to them since) - public read, same as
+// /api/summary, since financial data here is view-public / edit-admin-only.
+app.get('/api/banks', async (req, res) => {
+  try {
+    const banks = await dbAll(`
+      SELECT b.id, b.name, b.opening_balance, b.created_at,
+        b.opening_balance
+          + COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0)
+          AS balance
+      FROM banks b
+      LEFT JOIN transactions t ON t.bank_id = b.id
+      GROUP BY b.id
+      ORDER BY b.created_at ASC
+    `);
+    res.json(banks.map((b) => ({
+      ...b,
+      opening_balance: Number(b.opening_balance),
+      balance: Number(b.balance),
+    })));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create a new bank/committee account (admin-only "master entry" - most
+// masjids will only ever add a couple of these).
+app.post('/api/banks', requireAdmin, async (req, res) => {
+  try {
+    const { name, openingBalance } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+    const id = uuidv4();
+    await dbRun(
+      'INSERT INTO banks (id, name, opening_balance) VALUES ($1, $2, $3)',
+      [id, name.trim(), openingBalance ?? 0]
+    );
+    const newBank = await dbGet('SELECT id, name, opening_balance, created_at FROM banks WHERE id = $1', [id]);
+    res.status(201).json({ ...newBank, opening_balance: Number(newBank.opening_balance), balance: Number(newBank.opening_balance) });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'A bank with this name already exists' });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update a bank's name/opening balance.
+app.put('/api/banks/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, openingBalance } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+    const result = await dbRun(
+      'UPDATE banks SET name = $1, opening_balance = $2 WHERE id = $3',
+      [name.trim(), openingBalance ?? 0, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Bank not found' });
+    }
+    const banks = await dbAll(
+      `SELECT b.id, b.name, b.opening_balance, b.created_at,
+        b.opening_balance
+          + COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0)
+          AS balance
+       FROM banks b
+       LEFT JOIN transactions t ON t.bank_id = b.id
+       WHERE b.id = $1
+       GROUP BY b.id`,
+      [id]
+    );
+    const updated = banks[0];
+    res.json({ ...updated, opening_balance: Number(updated.opening_balance), balance: Number(updated.balance) });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'A bank with this name already exists' });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Create new transaction
 app.post('/api/transactions', requireAdmin, async (req, res) => {
   try {
-    const { type, category, amount, description, date, memberId } = req.body;
+    const { type, category, amount, description, date, memberId, bankId } = req.body;
 
     if (!type || !category || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (!bankId) {
+      return res.status(400).json({ error: 'A bank must be selected for this transaction' });
     }
     if (type === 'income' && category === 'Masjid payment' && !memberId) {
       return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
@@ -1361,8 +1498,8 @@ app.post('/api/transactions', requireAdmin, async (req, res) => {
     const transactionDate = date || new Date().toISOString();
 
     await dbRun(
-      'INSERT INTO transactions (id, type, category, amount, description, date, member_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [id, type, category, amount, description || '', transactionDate, memberId || null]
+      'INSERT INTO transactions (id, type, category, amount, description, date, member_id, bank_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [id, type, category, amount, description || '', transactionDate, memberId || null, bankId]
     );
 
     const newTransaction = await dbGet('SELECT * FROM transactions WHERE id = $1', [id]);
@@ -1384,19 +1521,22 @@ app.post('/api/transactions', requireAdmin, async (req, res) => {
 app.put('/api/transactions/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { type, category, amount, description, date, memberId } = req.body;
+    const { type, category, amount, description, date, memberId, bankId } = req.body;
 
     if (!type || !category || !amount || !date) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (!bankId) {
+      return res.status(400).json({ error: 'A bank must be selected for this transaction' });
     }
     if (type === 'income' && category === 'Masjid payment' && !memberId) {
       return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
     }
 
     const result = await dbRun(
-      `UPDATE transactions SET type = $1, category = $2, amount = $3, description = $4, date = $5, member_id = $6
-       WHERE id = $7`,
-      [type, category, amount, description || '', date, memberId || null, id]
+      `UPDATE transactions SET type = $1, category = $2, amount = $3, description = $4, date = $5, member_id = $6, bank_id = $7
+       WHERE id = $8`,
+      [type, category, amount, description || '', date, memberId || null, bankId, id]
     );
 
     if (result.rowCount === 0) {
