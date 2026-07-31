@@ -121,7 +121,7 @@ export default function ChartsPanel({ dateRange }: ChartsPanelProps) {
   if (loading) {
     return (
       <div className="charts-loading">
-        <Spin size="large" tip="Loading charts..." />
+        <Spin size="large" description="Loading charts..." />
       </div>
     );
   }
@@ -133,7 +133,7 @@ export default function ChartsPanel({ dateRange }: ChartsPanelProps) {
   return (
     <Row gutter={[24, 24]} className="charts-panel" style={{ marginTop: 40 }}>
       <Col xs={24} lg={11}>
-        <Card title="🧾 Expenses by Category" className="chart-card" bordered={false}>
+        <Card title="🧾 Expenses by Category" className="chart-card" variant="borderless">
           {categoryData.length === 0 ? (
             <Empty description="No expense data yet" />
           ) : (
@@ -155,7 +155,7 @@ export default function ChartsPanel({ dateRange }: ChartsPanelProps) {
       </Col>
 
       <Col xs={24} lg={13}>
-        <Card title="📈 Income vs Expense Trend" className="chart-card" bordered={false}>
+        <Card title="📈 Income vs Expense Trend" className="chart-card" variant="borderless">
           {trendData.length === 0 ? (
             <Empty description="No transaction data yet" />
           ) : (

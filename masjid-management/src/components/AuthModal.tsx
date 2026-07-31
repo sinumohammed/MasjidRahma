@@ -39,7 +39,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       open={open}
       onCancel={onClose}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item

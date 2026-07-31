@@ -148,7 +148,7 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
   if (loading) {
     return (
       <div className="banks-loading">
-        <Spin size="large" tip="Loading banks..." />
+        <Spin size="large" description="Loading banks..." />
       </div>
     );
   }

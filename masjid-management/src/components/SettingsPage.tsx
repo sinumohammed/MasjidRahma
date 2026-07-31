@@ -273,7 +273,7 @@ export default function SettingsPage() {
     <div className="settings-container">
       <h1 className="settings-title">⚙️ Settings</h1>
 
-      <Card title={<span><BulbOutlined /> Appearance</span>} className="settings-card" bordered={false}>
+      <Card title={<span><BulbOutlined /> Appearance</span>} className="settings-card" variant="borderless">
         <div className="settings-row">
           <div>
             <div className="settings-row-label"><MoonOutlined /> Dark Mode</div>
@@ -309,7 +309,7 @@ export default function SettingsPage() {
       </Card>
 
       {showNotificationsCard && pushSupported && vapidPublicKey && (
-        <Card title={<span><BellOutlined /> Notifications</span>} className="settings-card" bordered={false}>
+        <Card title={<span><BellOutlined /> Notifications</span>} className="settings-card" variant="borderless">
           <div className="settings-row">
             <div>
               <div className="settings-row-label">Food-day reminders</div>
@@ -398,7 +398,7 @@ export default function SettingsPage() {
       )}
 
       {isAdmin && (
-        <Card title={<span><DownloadOutlined /> Export Data</span>} className="settings-card" bordered={false}>
+        <Card title={<span><DownloadOutlined /> Export Data</span>} className="settings-card" variant="borderless">
           <p className="settings-row-hint">Download all transactions for backup or use in other tools.</p>
           <Space wrap>
             <Button icon={<DownloadOutlined />} onClick={() => handleExport('csv')} loading={exporting}>
@@ -411,7 +411,7 @@ export default function SettingsPage() {
         </Card>
       )}
 
-      <Card title={<span><QuestionCircleOutlined /> Help</span>} className="settings-card" bordered={false}>
+      <Card title={<span><QuestionCircleOutlined /> Help</span>} className="settings-card" variant="borderless">
         <Row gutter={[24, 16]}>
           <Col xs={24} sm={12}>
             <div className="settings-row-label">Masjid Committee</div>

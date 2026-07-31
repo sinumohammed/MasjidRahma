@@ -202,7 +202,7 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
                     value={-(profile.dues.due ?? 0)}
                     precision={2}
                     prefix={currencySymbol}
-                    valueStyle={{ color: -(profile.dues.due ?? 0) < 0 ? '#cf1322' : '#3f8600' }}
+                    styles={{ content: { color: -(profile.dues.due ?? 0) < 0 ? '#cf1322' : '#3f8600' } }}
                   />
                 </Col>
               </Row>

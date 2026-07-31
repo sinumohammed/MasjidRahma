@@ -120,7 +120,7 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
                 memberId: transaction.member_id ?? undefined,
                 bankId: transaction.bank_id ?? undefined,
               }
-            : undefined
+            : { date: dayjs() }
         }
       >
         {/* Type Selection */}
@@ -223,7 +223,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
         <Form.Item
           label="Transaction Date"
           name="date"
-          initialValue={dayjs()}
           rules={[{ required: true, message: 'Please select date' }]}
         >
           <DatePicker

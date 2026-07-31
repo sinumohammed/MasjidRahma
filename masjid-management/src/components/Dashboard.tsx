@@ -161,7 +161,7 @@ export default function Dashboard({
   if (isAdmin && loading) {
     return (
       <div className="dashboard-loading">
-        <Spin size="large" tip="Loading dashboard..." />
+        <Spin size="large" description="Loading dashboard..." />
       </div>
     );
   }
