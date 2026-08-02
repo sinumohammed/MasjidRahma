@@ -1,7 +1,7 @@
 # 🚀 Deployment Guide - Masjid Management App
 
 **Status**: ✅ Live in production
-**Last Deployed**: 2026-07-18
+**Last Deployed**: 2026-07-28
 
 ---
 
@@ -102,6 +102,7 @@ Render's free tier sleeps after ~15 minutes of inactivity — the first request 
 - **Installed PWA / already-open tabs may lag behind a fresh deploy for a bit.** `src/main.tsx` forces a service-worker update check on load and on foreground/focus (see Troubleshooting Log below), but a genuinely offline device or a session that never regains focus won't reflect a new deploy until it does.
 - **Push notifications require iOS 16.4+ AND the app added to the Home Screen** (standalone launch) — they silently do not work in a regular Safari tab. Android Chrome works more broadly. This is a platform limitation, not a bug.
 - **The daily push-reminder jobs are triggered externally** by a GitHub Actions cron workflow (`.github/workflows/push-notification-reminders.yml`) calling `POST /api/push/run-daily-check` (food-day-before reminder) and `POST /api/push/run-monthly-dues-check` (month-end dues reminder - a no-op except on the last day of the month), not an in-process timer — Render's free tier can sleep, so an in-process scheduler would be unreliable.
+- **The admin Activity page's location column depends on `ip-api.com`** (free tier, no API key, HTTP-only — Render's outbound call to it is plain `http://`, not `https://`), called from `getIpGeo()` in `server/index.js`. No env var to configure; failures/rate-limiting just leave city/region/country `null` for that row (never blocks the request that triggered it). Results are cached in-memory per IP for the life of the process, so a Render cold start/redeploy clears the cache and the next visit from each IP re-triggers one lookup. Location only ever resolves for real public-internet visitors — localhost/LAN IPs are always skipped.
 
 ---
 

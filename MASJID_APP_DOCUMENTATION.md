@@ -2,8 +2,32 @@
 
 **Status**: ✅ Deployed to production (see [DEPLOYMENT.md](DEPLOYMENT.md) for live URLs and hosting details)
 **Created**: 2026-07-12
-**Last Updated**: 2026-07-25
+**Last Updated**: 2026-07-28
 **Purpose**: Islamic financial management system for income/expense tracking, member food-supply rotation, and member dues tracking
+
+---
+
+## 🆕 RECENT UPDATES (2026-07-28)
+
+### New: admin usage timeline ("Activity" page)
+A new admin-only sidebar page (`src/components/Admin/ActivityLog.tsx`) shows a paginated, filterable log of who's using the app and how. Backed by a new `activity_logs` table (`server/index.js`) and three endpoints:
+- `POST /api/activity/log` (public/optional-auth) - fire-and-forget call from the frontend on every login, logout, and view switch (`App.tsx` logs `page_visit` on `activeKey` change, deduped via a ref so repeated renders on the same view don't double-log; `AuthContext.tsx` logs `login`/`logout`). Responds immediately (`204`), then enriches the row with IP-based city/region/country in the background via a cached `getIpGeo()` lookup (`ip-api.com`, in-memory `Map` cache keyed by IP so repeat visitors never re-hit the external API) - a slow/failed geo lookup never blocks or fails the logging call itself. Private/loopback IPs (localhost, LAN) are skipped outright, so location only ever resolves for real internet traffic (i.e. after deploying, not in local dev).
+- `GET /api/activity` (admin only) - paginated (`defaultPageSize`, not the antd `pageSize` footgun - see below), filterable by `eventType` and by `isAdmin` (an "Admin only" checkbox in the UI; unchecked/default shows non-admin + anonymous guest traffic).
+- `DELETE /api/activity/clear` and `POST /api/activity/delete` (admin only, `{ ids: string[] }` body) - the Activity page has row checkboxes ("select all" built into antd's `Table`), a "Delete Selected" button, and a "Clear All" button, both behind a confirm dialog.
+
+Device/browser/OS is parsed from the User-Agent with a small dependency-free regex parser (`parseUserAgent()`); PWA visits are flagged via `isRunningAsPwa()` (`display-mode: standalone` media query + `navigator.standalone` for iOS Safari, which doesn't support the media query) - note this only tells you a visit *came from* an installed instance, not whether/how many people installed it (`appinstalled` is Chromium-only, iOS fires nothing on Add to Home Screen).
+
+`app.set('trust proxy', true)` was added so `req.ip` reflects the real visitor IP behind Render's reverse proxy (via `X-Forwarded-For`) instead of always resolving to the proxy's own address.
+
+### Fix: pagination page-size changer silently reset to 10
+`MembersList.tsx` and `TransactionsList.tsx` passed `pagination={{ pageSize: 10, showSizeChanger: true }}` to antd's `Table` - passing `pageSize` (rather than `defaultPageSize`) makes it a *controlled* prop, so any user selection via the size-changer dropdown got silently reset back to 10 on the next re-render. Both now use `defaultPageSize: 10`, which only seeds the initial value and lets antd manage the user's choice internally.
+
+### Members list: avatar + notification-status ring
+`MembersList.tsx`'s leading status dot is now the member's `MemberAvatar` wrapped in a colored ring (green = notifications enabled, gray = disabled) instead of a plain 9px dot. `ProfileView.tsx`'s header avatar got the same treatment (green ring on the 64px avatar).
+
+Two bugs surfaced while wiring this up, both fixed:
+- `GET /api/members/me` and `GET /api/members/:id/profile` were querying `members` directly (`SELECT * FROM members WHERE id = $1`) without the `LEFT JOIN push_subscriptions` that `GET /api/members` already had, so `hasPushSubscription` was always `undefined` on the Profile page even though it worked correctly on the Members list. Both routes now use the same joined query.
+- Even after that fix, the ring stayed invisible in dark theme: `ProfileView.css` had `:root[data-theme='dark'] .profile-view-avatar.member-avatar-photo { border-color: rgba(255,255,255,0.15); }`, and because that selector has the same specificity as (but was declared after, and additionally beats via the `:root[data-theme='dark']` attribute selector) the plain `.profile-view-avatar-online.member-avatar-photo` green-ring rule, it silently won and overrode the border color back to white in dark mode - the green `box-shadow` still showed faintly, but the border itself never turned green. Fixed with a dedicated `:root[data-theme='dark'] .profile-view-avatar-online...` rule of matching specificity placed after the generic dark override.
 
 ---
 
@@ -300,6 +324,15 @@ DELETE /api/members/swap/:date        → (admin) revert a date's override
 
 `GET /api/members/me` and `GET /api/members/:id/profile` share a `buildMemberProfilePayload(member)` helper in `server/index.js`. `dues` comes from `calculateDues()` (expected vs. paid, based on `Masjid payment`/`income` transactions tagged to the member). `monthlyBreakdown` is only populated for `payment_frequency: 'monthly'` members (see `buildMonthlyBreakdown()`); yearly-plan members get `monthlyBreakdown: null` and the frontend derives a payments list from `transactions` instead.
 
+### Activity (usage timeline)
+```
+POST   /api/activity/log            → (public/optional-auth) { eventType: 'login'|'logout'|'page_visit', path?, isPwa } → 204
+GET    /api/activity                → (admin only) ?limit&offset&eventType&isAdmin → { events: ActivityEvent[], total }
+DELETE /api/activity/clear          → (admin only) deletes every row
+POST   /api/activity/delete         → (admin only) { ids: string[] } → bulk-delete selected rows
+```
+See [🆕 RECENT UPDATES (2026-07-28)](#-recent-updates-2026-07-28) above for the IP-geolocation/UA-parsing/PWA-detection details.
+
 ---
 
 ## 💾 DATABASE SCHEMA
@@ -571,5 +604,5 @@ For production URLs and deployment steps, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
-**Last Updated**: 2026-07-18
+**Last Updated**: 2026-07-28
 **App Status**: ✅ Deployed to production (Vercel + Render + Neon) — see [DEPLOYMENT.md](DEPLOYMENT.md)
