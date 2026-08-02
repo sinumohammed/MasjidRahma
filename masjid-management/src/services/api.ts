@@ -90,6 +90,8 @@ export interface Member {
   payment_frequency?: 'monthly' | 'yearly' | null;
   member_type: MemberType;
   hasPushSubscription: boolean;
+  dues_start_year?: number | null;
+  dues_start_month?: number | null;
 }
 
 export interface DuesInfo {
@@ -113,6 +115,8 @@ export interface MyProfile {
   monthlyBreakdown: MonthlyDueEntry[] | null;
   transactions: Transaction[];
   currentYear: number;
+  joinYear: number;
+  maxYear: number;
 }
 
 export interface Assignment {
@@ -314,6 +318,8 @@ export const createMember = async (
     paymentAmount?: number | null;
     paymentFrequency?: 'monthly' | 'yearly' | null;
     memberType?: MemberType;
+    duesStartYear?: number | null;
+    duesStartMonthIndex?: number | null;
   }
 ): Promise<Member> => {
   const response = await fetch(`${API_BASE_URL}/members`, {
@@ -337,6 +343,8 @@ export const updateMember = async (
     paymentAmount?: number | null;
     paymentFrequency?: 'monthly' | 'yearly' | null;
     memberType?: MemberType;
+    duesStartYear?: number | null;
+    duesStartMonthIndex?: number | null;
   }
 ): Promise<Member> => {
   const response = await fetch(`${API_BASE_URL}/members/${id}`, {
@@ -360,6 +368,33 @@ export const getMemberProfile = async (memberId: string): Promise<MyProfile> => 
   const response = await fetch(`${API_BASE_URL}/members/${memberId}/profile`, { headers: { ...authHeaders() } });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to fetch member profile');
+  return result;
+};
+
+export interface MonthlyBreakdownResult {
+  year: number;
+  breakdown: MonthlyDueEntry[] | null;
+  dues: DuesInfo;
+}
+
+export const getMyMonthlyBreakdown = async (year: number): Promise<MonthlyBreakdownResult> => {
+  const response = await fetch(`${API_BASE_URL}/members/me/monthly-breakdown?year=${year}`, {
+    headers: { ...authHeaders() },
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to fetch monthly breakdown');
+  return result;
+};
+
+export const getMemberMonthlyBreakdown = async (
+  memberId: string,
+  year: number
+): Promise<MonthlyBreakdownResult> => {
+  const response = await fetch(`${API_BASE_URL}/members/${memberId}/monthly-breakdown?year=${year}`, {
+    headers: { ...authHeaders() },
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to fetch monthly breakdown');
   return result;
 };
 

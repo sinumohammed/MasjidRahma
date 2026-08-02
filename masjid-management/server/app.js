@@ -149,6 +149,16 @@ async function initializeDatabase() {
   // are never assigned food duty - see getActiveMembersOrdered().
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS member_type TEXT NOT NULL DEFAULT 'regular'`);
 
+  // Optional admin-set override for when a monthly payer's dues actually
+  // start (year + 0-indexed month). Null means "no override" - dues math
+  // keeps its default behavior of reckoning every year from January
+  // (calculateDues/buildMonthlyBreakdown). Set this when a member only
+  // actually started partway through a year, so earlier months show as
+  // 'nil' (not owed) instead of 'missed' - without needing a matching
+  // transaction to fake it as paid.
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS dues_start_year INTEGER`);
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS dues_start_month INTEGER`);
+
   // Optional link from a transaction to the member it's attributed to.
   await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS member_id TEXT REFERENCES members(id)`);
 
@@ -519,28 +529,40 @@ async function getActiveMembersOrdered() {
   return dbAll("SELECT * FROM members WHERE active = true AND member_type = 'regular' ORDER BY position ASC");
 }
 
-// Computes a member's recurring-payment standing. `today` is
-// { year, monthIndex } in the masjid's timezone. The current in-progress
-// month/year already counts as owed (matches "pay at start of period").
-// Monthly plans are always reckoned from January of the current year
-// (periodsOwed = months elapsed so far this year), matching the Jan-Dec
-// monthly breakdown table (buildMonthlyBreakdown) - not from the member's
-// actual join date, so a member who joined mid-year is still expected to
-// have "caught up" on the months before they joined. Yearly plans are
-// unaffected and still count lifetime periods since the member's join date.
+// Resolves how many of a given year's 12 months a monthly payer actually
+// owes, given their optional dues_start_year/dues_start_month override (see
+// the members table migration comment). Returns 0-12: 12 means "not
+// obligated for any month of this year" (year is entirely before the
+// start), 0 means "no override, or the override year has already passed"
+// (i.e. the whole year is owed from January as before).
+function resolveDuesStartMonthIndexForYear(member, year) {
+  if (member.dues_start_year == null || member.dues_start_month == null) return 0;
+  if (year < member.dues_start_year) return 12;
+  if (year === member.dues_start_year) return member.dues_start_month;
+  return 0;
+}
+
+// Computes a yearly-plan member's recurring-payment standing (monthly plans
+// go through computeMonthlyBreakdownForYear/computeCurrentDuesAndBreakdown
+// instead, which also resolve the dues_start override for month-level
+// coverage). `today` is { year, monthIndex } in the masjid's timezone.
+// Yearly plans count lifetime periods since a start point, normally the
+// member's created_at, but an admin-set dues_start override (if set) takes
+// precedence - e.g. a member added to the system late but who actually
+// started paying (or should start being counted) from an earlier or later
+// year/month than created_at. The current in-progress period already
+// counts as owed (matches "pay at start of period").
 function calculateDues(member, paid, today) {
   if (member.payment_amount == null || !member.payment_frequency) {
     return { hasPlan: false, expected: null, paid, due: null, periodsOwed: null };
   }
-  let periodsOwed;
-  if (member.payment_frequency === 'monthly') {
-    periodsOwed = today.monthIndex + 1;
-  } else {
-    const start = getMasjidYearMonth(new Date(member.created_at));
-    const rawMonthsElapsed = (today.year - start.year) * 12 + (today.monthIndex - start.monthIndex) + 1;
-    const monthsElapsed = Math.max(rawMonthsElapsed, 0);
-    periodsOwed = Math.ceil(monthsElapsed / 12);
-  }
+  const start =
+    member.dues_start_year != null && member.dues_start_month != null
+      ? { year: member.dues_start_year, monthIndex: member.dues_start_month }
+      : getMasjidYearMonth(new Date(member.created_at));
+  const rawMonthsElapsed = (today.year - start.year) * 12 + (today.monthIndex - start.monthIndex) + 1;
+  const monthsElapsed = Math.max(rawMonthsElapsed, 0);
+  const periodsOwed = Math.ceil(monthsElapsed / 12);
   const expected = Number(member.payment_amount) * periodsOwed;
   return { hasPlan: true, expected, paid, due: expected - paid, periodsOwed };
 }
@@ -554,13 +576,7 @@ function calculateDues(member, paid, today) {
 // `expected` also accumulates since join), so paid stays lifetime there.
 async function getMemberMasjidPaymentTotal(member, today) {
   if (member.payment_frequency === 'monthly') {
-    const paidRow = await dbGet(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'
-       AND date::date BETWEEN $2::date AND $3::date`,
-      [member.id, `${today.year}-01-01`, `${today.year}-12-31`]
-    );
-    return Number(paidRow.total);
+    return getMemberMasjidPaymentTotalForYear(member, today.year);
   }
   const paidRow = await dbGet(
     `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
@@ -570,34 +586,201 @@ async function getMemberMasjidPaymentTotal(member, today) {
   return Number(paidRow.total);
 }
 
+// Same as the monthly branch of getMemberMasjidPaymentTotal above, but for an
+// arbitrary calendar year - used to check a monthly payer's prior-year
+// standing (e.g. last year's missed months) in addition to the current year.
+async function getMemberMasjidPaymentTotalForYear(member, year) {
+  const paidRow = await dbGet(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+     WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'
+     AND date::date BETWEEN $2::date AND $3::date`,
+    [member.id, `${year}-01-01`, `${year}-12-31`]
+  );
+  return Number(paidRow.total);
+}
+
+// Lifetime sum from a member's dues_start override onward (year/month, day
+// 1) - used by resolveMonthlyCoverage's override branch to fill months
+// sequentially from dues_start regardless of which calendar year each
+// payment happened to be dated in.
+async function getMemberMasjidPaymentTotalSinceDuesStart(member) {
+  const startDate = `${member.dues_start_year}-${String(member.dues_start_month + 1).padStart(2, '0')}-01`;
+  const paidRow = await dbGet(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+     WHERE member_id = $1 AND category = 'Masjid payment' AND type = 'income'
+     AND date::date >= $2::date`,
+    [member.id, startDate]
+  );
+  return Number(paidRow.total);
+}
+
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// Full current-year (Jan-Dec) month-by-month breakdown for monthly-plan
-// members, always spanning the whole year regardless of when the member
-// actually joined. Coverage is cumulative and counted from January of the
-// current year, not tied to which month a payment landed in: if `paid`
-// covers N months' worth of dues (floor(paid / payment_amount)), the first N
-// months of the year are marked paid, regardless of which specific month(s)
-// the payments were actually recorded against - so paying ahead of schedule
-// shows future months as paid too (an advance). Every month gets one of
-// three statuses:
-//   - 'paid': covered by cumulative payments (past, current, or future/advance)
+// Full calendar-year (Jan-Dec) month-by-month breakdown for a monthly-plan
+// member. `coveredMonths` is however many consecutive months (starting at
+// `sequenceOffset` months before this year's January) are paid for -
+// `sequenceOffset` is what lets coverage span year boundaries: 0 means
+// "count from this year's January" (the no-override default, resets every
+// year - see resolveMonthlyCoverage), while a non-zero value threads a
+// continuous month sequence from a dues_start override through however many
+// calendar years it takes to exhaust. Every month gets one of three statuses:
+//   - 'paid': its position in the sequence falls within the covered count
 //   - 'missed': not covered, and its month has already started (<= today)
 //   - 'nil': not covered, and it's still in the future - paying ahead is the
 //            member's choice, so an unpaid future month isn't "missed" yet
-// The "Amount Due" figure itself (calculateDues) is unaffected by this and
-// still counts only the months elapsed since the member's actual join date.
-function buildMonthlyBreakdown(member, paid, today) {
+// `startMonthIndex` (from resolveDuesStartMonthIndexForYear) forces every
+// month before it to 'nil' too - the member simply wasn't obligated yet.
+function buildMonthlyBreakdown(member, coveredMonths, year, cutoffMonthIndex, startMonthIndex = 0, sequenceOffset = 0) {
   if (member.payment_frequency !== 'monthly') return null;
-  const monthlyAmount = Number(member.payment_amount);
-  const coveredMonths = monthlyAmount > 0 ? Math.floor(paid / monthlyAmount) : 0;
 
   const entries = [];
   for (let m = 0; m <= 11; m++) {
-    const status = m < coveredMonths ? 'paid' : m <= today.monthIndex ? 'missed' : 'nil';
-    entries.push({ year: today.year, monthIndex: m, label: MONTH_LABELS[m], status });
+    let status;
+    if (m < startMonthIndex) {
+      status = 'nil';
+    } else {
+      const relativeIndex = sequenceOffset + m;
+      status = relativeIndex >= 0 && relativeIndex < coveredMonths ? 'paid' : m <= cutoffMonthIndex ? 'missed' : 'nil';
+    }
+    entries.push({ year, monthIndex: m, label: MONTH_LABELS[m], status });
   }
   return entries;
+}
+
+// Resolves how many months a monthly payer has covered and where that
+// coverage sequence starts, for a given calendar year:
+//
+// - No dues_start override: each calendar year is its own ledger - `paid`
+//   is only that year's dated "Masjid payment" transactions, coveredMonths
+//   resets to 0 every January (matches the original "pay at start of
+//   period, no cross-year carryover" design).
+// - Override set: one continuous ledger starting at dues_start_year/month -
+//   `paid` is summed across every year from dues_start onward, and coverage
+//   fills sequentially month-by-month from dues_start regardless of which
+//   calendar year the payment was actually recorded in (e.g. two payments
+//   recorded in 2026 still fill Oct/Nov/Dec 2025 first if dues started
+//   then), with any excess naturally spilling into future years too - no
+//   separate carried-forward-credit step needed.
+async function resolveMonthlyCoverage(member, year, today) {
+  const startMonthIndex = resolveDuesStartMonthIndexForYear(member, year);
+  const monthlyAmount = Number(member.payment_amount);
+  const hasOverride = member.dues_start_year != null && member.dues_start_month != null;
+
+  if (hasOverride) {
+    const paid = await getMemberMasjidPaymentTotalSinceDuesStart(member);
+    const coveredMonths = monthlyAmount > 0 ? Math.floor(paid / monthlyAmount) : 0;
+    const sequenceOffset = (year - member.dues_start_year) * 12 - member.dues_start_month;
+    return { startMonthIndex, coveredMonths, sequenceOffset };
+  }
+
+  // No override: each year is its own ledger, EXCEPT that paying enough
+  // this year to cover it entirely with money left over carries that excess
+  // one year forward (computeNoOverrideCarriedCredit) - so an overpaying
+  // member sees next year's first few months already 'paid' instead of
+  // waiting for a transaction dated in that future year.
+  let paid;
+  if (year === today.year) {
+    paid = await getMemberMasjidPaymentTotal(member, today);
+  } else if (year === today.year + 1) {
+    const carriedCredit = await computeNoOverrideCarriedCredit(member, today);
+    paid = (await getMemberMasjidPaymentTotalForYear(member, year)) + carriedCredit;
+  } else {
+    paid = await getMemberMasjidPaymentTotalForYear(member, year);
+  }
+  const coveredMonths = monthlyAmount > 0 ? Math.floor(paid / monthlyAmount) : 0;
+  return { startMonthIndex, coveredMonths, sequenceOffset: 0 };
+}
+
+// How much of a no-override monthly payer's current-year payments are pure
+// advance - paid beyond fully covering all 12 months of this year - as a
+// rupee amount to carry into next year's `paid` (resolveMonthlyCoverage
+// above). Members with a dues_start override don't need this: their
+// coverage is already one continuous cross-year sequence.
+async function computeNoOverrideCarriedCredit(member, today) {
+  const monthlyAmount = Number(member.payment_amount);
+  if (!(monthlyAmount > 0)) return 0;
+  const currentYearPaid = await getMemberMasjidPaymentTotal(member, today);
+  const coveredMonths = Math.floor(currentYearPaid / monthlyAmount);
+  const excessMonths = Math.max(coveredMonths - 12, 0);
+  return excessMonths * monthlyAmount;
+}
+
+// Monthly breakdown + dues standing for an arbitrary calendar year (not just
+// the current one) - used by the profile's year-selector so a member/admin
+// can page backward/forward through years' paid/missed months, with
+// "Expected So Far" / "Total Paid" / "Credit Balance" tracking whichever year
+// is selected instead of staying pinned to the current year. A future year
+// just comes back with nothing formally owed (expected/periodsOwed 0) but
+// still shows 'paid' months if coverage (see resolveMonthlyCoverage) reaches
+// that far ahead - `paid` here is derived from the breakdown itself (count
+// of that year's 'paid' months), not the raw sum of that year's dated
+// transactions, since under a dues_start override a payment recorded in one
+// calendar year can cover months in a different one.
+async function computeMonthlyBreakdownForYear(member, year, today) {
+  if (member.payment_frequency !== 'monthly') {
+    return { breakdown: null, dues: { hasPlan: false, expected: null, paid: 0, due: null, periodsOwed: null } };
+  }
+  const { startMonthIndex, coveredMonths, sequenceOffset } = await resolveMonthlyCoverage(member, year, today);
+  const cutoffMonthIndex = year < today.year ? 11 : year === today.year ? today.monthIndex : -1;
+  const breakdown = buildMonthlyBreakdown(member, coveredMonths, year, cutoffMonthIndex, startMonthIndex, sequenceOffset);
+
+  const monthlyAmount = Number(member.payment_amount);
+  const paidForYear = breakdown.filter((entry) => entry.status === 'paid').length * monthlyAmount;
+
+  const periodsOwed =
+    startMonthIndex >= 12
+      ? 0
+      : year < today.year
+        ? 12 - startMonthIndex
+        : year === today.year
+          ? Math.max(today.monthIndex - startMonthIndex + 1, 0)
+          : 0;
+  const expected = monthlyAmount * periodsOwed;
+  const dues = { hasPlan: true, expected, paid: paidForYear, due: expected - paidForYear, periodsOwed };
+
+  return { breakdown, dues };
+}
+
+// Shared dues+breakdown computation for "today" specifically - used by both
+// the profile payload and the dues-reminder job. Monthly plans go through
+// computeMonthlyBreakdownForYear (which also resolves the dues_start
+// override); yearly plans have no month breakdown and use calculateDues
+// directly against their lifetime-cumulative paid total.
+async function computeCurrentDuesAndBreakdown(member, today) {
+  if (member.payment_frequency === 'monthly') {
+    const { breakdown, dues } = await computeMonthlyBreakdownForYear(member, today.year, today);
+    return { dues, monthlyBreakdown: breakdown };
+  }
+  const paid = await getMemberMasjidPaymentTotal(member, today);
+  return { dues: calculateDues(member, paid, today), monthlyBreakdown: null };
+}
+
+// How many years past `today.year` a monthly payer's coverage (see
+// resolveMonthlyCoverage) actually reaches - used as the profile
+// year-selector's upper bound so an overpaying member can navigate forward
+// to see those months already marked 'paid'. 0 if coverage doesn't reach
+// past the current year.
+//
+// With a dues_start override, coverage is one continuous sequence that can
+// run arbitrarily far ahead, so the last covered year is computed directly
+// from dues_start_month + coveredMonths (months-since-dues_start's January).
+// Without an override, resolveMonthlyCoverage only ever carries at most one
+// year of credit forward (computeNoOverrideCarriedCredit), so the check is
+// just "did that carry produce anything".
+async function computeMonthlyMaxYearOffset(member, today) {
+  if (member.payment_frequency !== 'monthly') return 0;
+  const hasOverride = member.dues_start_year != null && member.dues_start_month != null;
+
+  if (hasOverride) {
+    const { coveredMonths } = await resolveMonthlyCoverage(member, today.year, today);
+    if (coveredMonths <= 0) return 0;
+    const lastCoveredYear =
+      member.dues_start_year + Math.floor((member.dues_start_month + coveredMonths - 1) / 12);
+    return Math.max(lastCoveredYear - today.year, 0);
+  }
+
+  const carriedCredit = await computeNoOverrideCarriedCredit(member, today);
+  return carriedCredit > 0 ? 1 : 0;
 }
 
 // Shared payload builder for both a member viewing their own profile and an
@@ -608,10 +791,26 @@ async function buildMemberProfilePayload(member) {
     [member.id]
   );
   const today = getMasjidTodayParts();
-  const paid = await getMemberMasjidPaymentTotal(member, today);
-  const dues = calculateDues(member, paid, today);
-  const monthlyBreakdown = buildMonthlyBreakdown(member, paid, today);
-  return { member, dues, monthlyBreakdown, transactions, currentYear: today.year };
+  const { dues, monthlyBreakdown } = await computeCurrentDuesAndBreakdown(member, today);
+
+  // The year-selector's lower bound: normally the member's created_at year,
+  // but extended back further to whichever is earliest of: an earlier-dated
+  // transaction on record (e.g. backfilled history from before their member
+  // record was created), or an admin-set dues_start_year that predates both
+  // (e.g. dues start Oct 2025 for a member added to the system in 2026) -
+  // otherwise that year would be unreachable via the selector even though
+  // it's exactly the year the dues-start override is meant to expose.
+  const createdYear = getMasjidYearMonth(new Date(member.created_at)).year;
+  const earliestTransactionYear = transactions.length
+    ? Math.min(...transactions.map((t) => getMasjidYearMonth(new Date(t.date)).year))
+    : createdYear;
+  const joinYear = Math.min(createdYear, earliestTransactionYear, member.dues_start_year ?? createdYear);
+
+  // The upper bound: normally currentYear, but extended forward as far as
+  // the member's payment coverage actually reaches (computeMonthlyMaxYearOffset).
+  const maxYear = today.year + (await computeMonthlyMaxYearOffset(member, today));
+
+  return { member, dues, monthlyBreakdown, transactions, currentYear: today.year, joinYear, maxYear };
 }
 
 async function ensureRotationState() {
@@ -922,18 +1121,14 @@ async function sendPushToSubscriptions(subscriptions, payload) {
 // specific months are unpaid - shared by the month-end reminder job, the
 // admin's pending-payments list, and the admin's on-demand reminder button.
 async function computeMemberDueInfo(member, today) {
-  const paid = await getMemberMasjidPaymentTotal(member, today);
-  const dues = calculateDues(member, paid, today);
+  const { dues, monthlyBreakdown } = await computeCurrentDuesAndBreakdown(member, today);
   if (!dues.hasPlan || !dues.due || dues.due <= 0) {
-    return { ...dues, paid, missedMonths: null };
+    return { ...dues, missedMonths: null };
   }
-  const missedMonths =
-    member.payment_frequency === 'monthly'
-      ? buildMonthlyBreakdown(member, paid, today)
-          .filter((entry) => entry.status === 'missed')
-          .map((entry) => entry.label)
-      : null;
-  return { ...dues, paid, missedMonths };
+  const missedMonths = monthlyBreakdown
+    ? monthlyBreakdown.filter((entry) => entry.status === 'missed').map((entry) => entry.label)
+    : null;
+  return { ...dues, missedMonths };
 }
 
 // Returns the { title, body } for a member's dues reminder, or null if
@@ -1487,9 +1682,6 @@ app.post('/api/transactions', requireAdmin, async (req, res) => {
     if (!type || !category || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    if (!bankId) {
-      return res.status(400).json({ error: 'A bank must be selected for this transaction' });
-    }
     if (type === 'income' && category === 'Masjid payment' && !memberId) {
       return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
     }
@@ -1499,7 +1691,7 @@ app.post('/api/transactions', requireAdmin, async (req, res) => {
 
     await dbRun(
       'INSERT INTO transactions (id, type, category, amount, description, date, member_id, bank_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [id, type, category, amount, description || '', transactionDate, memberId || null, bankId]
+      [id, type, category, amount, description || '', transactionDate, memberId || null, bankId || null]
     );
 
     const newTransaction = await dbGet('SELECT * FROM transactions WHERE id = $1', [id]);
@@ -1526,9 +1718,6 @@ app.put('/api/transactions/:id', requireAdmin, async (req, res) => {
     if (!type || !category || !amount || !date) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    if (!bankId) {
-      return res.status(400).json({ error: 'A bank must be selected for this transaction' });
-    }
     if (type === 'income' && category === 'Masjid payment' && !memberId) {
       return res.status(400).json({ error: 'A member must be selected for Masjid payment transactions' });
     }
@@ -1536,7 +1725,7 @@ app.put('/api/transactions/:id', requireAdmin, async (req, res) => {
     const result = await dbRun(
       `UPDATE transactions SET type = $1, category = $2, amount = $3, description = $4, date = $5, member_id = $6, bank_id = $7
        WHERE id = $8`,
-      [type, category, amount, description || '', date, memberId || null, bankId, id]
+      [type, category, amount, description || '', date, memberId || null, bankId || null, id]
     );
 
     if (result.rowCount === 0) {
@@ -1640,6 +1829,19 @@ function validateMemberType(memberType) {
   return memberType == null || MEMBER_TYPES.includes(memberType);
 }
 
+// Both fields must be set together (or both omitted) - a year without a
+// month (or vice versa) can't be resolved to a specific starting month.
+function validateDuesStart(duesStartYear, duesStartMonthIndex) {
+  if (duesStartYear == null && duesStartMonthIndex == null) return true;
+  if (duesStartYear == null || duesStartMonthIndex == null) return false;
+  return (
+    Number.isInteger(duesStartYear) &&
+    Number.isInteger(duesStartMonthIndex) &&
+    duesStartMonthIndex >= 0 &&
+    duesStartMonthIndex <= 11
+  );
+}
+
 app.get('/api/members', async (req, res) => {
   try {
     const members = await dbAll(
@@ -1659,7 +1861,7 @@ app.get('/api/members', async (req, res) => {
 // the member can log in with their unique_id + phone immediately.
 app.post('/api/members', requireAdmin, async (req, res) => {
   try {
-    const { name, address, phone, memberCount, paymentAmount, paymentFrequency, memberType } = req.body;
+    const { name, address, phone, memberCount, paymentAmount, paymentFrequency, memberType, duesStartYear, duesStartMonthIndex } = req.body;
 
     if (!name || !address || !phone || !memberCount) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -1672,6 +1874,9 @@ app.post('/api/members', requireAdmin, async (req, res) => {
     }
     if (!validateMemberType(memberType)) {
       return res.status(400).json({ error: 'memberType must be "regular" or "non_rotation"' });
+    }
+    if (!validateDuesStart(duesStartYear, duesStartMonthIndex)) {
+      return res.status(400).json({ error: 'duesStartYear/duesStartMonthIndex must both be set, or both omitted' });
     }
 
     const id = uuidv4();
@@ -1689,9 +1894,9 @@ app.post('/api/members', requireAdmin, async (req, res) => {
     try {
       await client.query('BEGIN');
       await client.query(
-        `INSERT INTO members (id, unique_id, position, name, address, phone, member_count, payment_amount, payment_frequency, member_type)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [id, uniqueId, position, name, address, phone, memberCount, paymentAmount ?? null, paymentFrequency ?? null, memberType || 'regular']
+        `INSERT INTO members (id, unique_id, position, name, address, phone, member_count, payment_amount, payment_frequency, member_type, dues_start_year, dues_start_month)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [id, uniqueId, position, name, address, phone, memberCount, paymentAmount ?? null, paymentFrequency ?? null, memberType || 'regular', duesStartYear ?? null, duesStartMonthIndex ?? null]
       );
       await client.query(
         'INSERT INTO users (id, username, password_hash, is_admin, member_id) VALUES ($1, $2, NULL, false, $3)',
@@ -1716,7 +1921,7 @@ app.post('/api/members', requireAdmin, async (req, res) => {
 app.put('/api/members/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, address, phone, memberCount, active, paymentAmount, paymentFrequency, memberType } = req.body;
+    const { name, address, phone, memberCount, active, paymentAmount, paymentFrequency, memberType, duesStartYear, duesStartMonthIndex } = req.body;
 
     if (!name || !address || !phone || !memberCount) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -1730,11 +1935,14 @@ app.put('/api/members/:id', requireAdmin, async (req, res) => {
     if (!validateMemberType(memberType)) {
       return res.status(400).json({ error: 'memberType must be "regular" or "non_rotation"' });
     }
+    if (!validateDuesStart(duesStartYear, duesStartMonthIndex)) {
+      return res.status(400).json({ error: 'duesStartYear/duesStartMonthIndex must both be set, or both omitted' });
+    }
 
     const result = await dbRun(
       `UPDATE members SET name = $1, address = $2, phone = $3, member_count = $4, active = $5,
-       payment_amount = $6, payment_frequency = $7, member_type = $8 WHERE id = $9`,
-      [name, address, phone, memberCount, active !== false, paymentAmount ?? null, paymentFrequency ?? null, memberType || 'regular', id]
+       payment_amount = $6, payment_frequency = $7, member_type = $8, dues_start_year = $9, dues_start_month = $10 WHERE id = $11`,
+      [name, address, phone, memberCount, active !== false, paymentAmount ?? null, paymentFrequency ?? null, memberType || 'regular', duesStartYear ?? null, duesStartMonthIndex ?? null, id]
     );
 
     if (result.rowCount === 0) {
@@ -1768,6 +1976,49 @@ app.get('/api/members/me', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Member not found' });
     }
     res.json(await buildMemberProfilePayload(member));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Monthly paid/missed breakdown for an arbitrary year, for the profile
+// page's year-selector (backward/forward through past years). Scoped to the
+// logged-in member's own id, same as /api/members/me above.
+app.get('/api/members/me/monthly-breakdown', requireAuth, async (req, res) => {
+  try {
+    if (req.user.isAdmin || !req.user.memberId) {
+      return res.status(403).json({ error: 'Not a member account' });
+    }
+    const year = Number.parseInt(req.query.year, 10);
+    if (!Number.isInteger(year)) {
+      return res.status(400).json({ error: 'year must be an integer' });
+    }
+    const member = await dbGet('SELECT * FROM members WHERE id = $1', [req.user.memberId]);
+    if (!member) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    const today = getMasjidTodayParts();
+    const { breakdown, dues } = await computeMonthlyBreakdownForYear(member, year, today);
+    res.json({ year, breakdown, dues });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin-only equivalent of the above, for any member.
+app.get('/api/members/:id/monthly-breakdown', requireAdmin, async (req, res) => {
+  try {
+    const year = Number.parseInt(req.query.year, 10);
+    if (!Number.isInteger(year)) {
+      return res.status(400).json({ error: 'year must be an integer' });
+    }
+    const member = await dbGet('SELECT * FROM members WHERE id = $1', [req.params.id]);
+    if (!member) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    const today = getMasjidTodayParts();
+    const { breakdown, dues } = await computeMonthlyBreakdownForYear(member, year, today);
+    res.json({ year, breakdown, dues });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

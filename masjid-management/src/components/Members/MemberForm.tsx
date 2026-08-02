@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Form, Input, InputNumber, Select, Button, Switch, Space, message } from 'antd';
+import { Form, Input, InputNumber, Select, Button, Switch, Space, DatePicker, message } from 'antd';
+import dayjs from 'dayjs';
 import { createMember, updateMember, type Member } from '../../services/api';
 import './MemberForm.css';
 
@@ -13,10 +14,22 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const isEditMode = Boolean(member);
+  const paymentFrequency = Form.useWatch('paymentFrequency', form);
 
   const handleSubmit = async (values: any) => {
     try {
       setLoading(true);
+
+      const hasDuesStart =
+        (values.paymentFrequency === 'monthly' || values.paymentFrequency === 'yearly') && values.duesStart;
+      const duesStartYear = hasDuesStart ? values.duesStart.year() : null;
+      // Yearly plans only ask for a year (see the picker below) - always
+      // treat that as January of that year for the monthsElapsed math.
+      const duesStartMonthIndex = hasDuesStart
+        ? values.paymentFrequency === 'yearly'
+          ? 0
+          : values.duesStart.month()
+        : null;
 
       if (isEditMode && member) {
         await updateMember(member.id, {
@@ -28,6 +41,8 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
           paymentAmount: values.paymentAmount ?? null,
           paymentFrequency: values.paymentFrequency ?? null,
           memberType: values.memberType,
+          duesStartYear,
+          duesStartMonthIndex,
         });
         message.success('Member updated successfully!');
       } else {
@@ -39,6 +54,8 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
           paymentAmount: values.paymentAmount ?? null,
           paymentFrequency: values.paymentFrequency ?? null,
           memberType: values.memberType,
+          duesStartYear,
+          duesStartMonthIndex,
         });
         message.success('Member added successfully!');
       }
@@ -77,6 +94,10 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
                 paymentAmount: member.payment_amount ?? undefined,
                 paymentFrequency: member.payment_frequency ?? undefined,
                 memberType: member.member_type,
+                duesStart:
+                  member.dues_start_year != null && member.dues_start_month != null
+                    ? dayjs().year(member.dues_start_year).month(member.dues_start_month).date(1)
+                    : undefined,
               }
             : { active: true, memberType: 'regular' }
         }
@@ -138,6 +159,25 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
             ]}
           />
         </Form.Item>
+
+        {(paymentFrequency === 'monthly' || paymentFrequency === 'yearly') && (
+          <Form.Item
+            label={paymentFrequency === 'yearly' ? 'Dues Start Year (optional)' : 'Dues Start Month (optional)'}
+            name="duesStart"
+            tooltip={
+              paymentFrequency === 'monthly'
+                ? 'If this member only actually started paying from a certain month (e.g. joined mid-year), set it here so earlier months show as Nil instead of Missed - without needing a matching transaction. Leave blank to keep the default (every year owed from January).'
+                : "If this member's dues should be counted from a different year than when their record was created (e.g. added late but should count from an earlier or later join year), set it here. Leave blank to use the record's created date."
+            }
+          >
+            <DatePicker
+              picker={paymentFrequency === 'yearly' ? 'year' : 'month'}
+              placeholder={paymentFrequency === 'yearly' ? 'Select start year' : 'Select start month'}
+              style={{ width: '100%' }}
+              allowClear
+            />
+          </Form.Item>
+        )}
 
         <Form.Item
           label="Food Supply Rotation"

@@ -150,16 +150,13 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
           />
         </Form.Item>
 
-        {/* Bank (mandatory for every transaction - attributes it to that account's balance) */}
-        <Form.Item
-          label="Bank"
-          name="bankId"
-          rules={[{ required: true, message: 'Please select which bank this transaction is for' }]}
-        >
+        {/* Bank (optional - attributes it to that account's balance when set) */}
+        <Form.Item label="Bank (Optional)" name="bankId">
           <Select
             placeholder="Select a bank"
             options={banks.map((b) => ({ label: b.name, value: b.id }))}
             className="form-select"
+            allowClear
           />
         </Form.Item>
 

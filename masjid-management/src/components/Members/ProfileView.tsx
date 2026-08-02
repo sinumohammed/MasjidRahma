@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Card, Table, Tag, Spin, Alert, Statistic, Row, Col, Select, Empty } from 'antd';
+import { Card, Table, Tag, Spin, Alert, Statistic, Row, Col, Select, Empty, Button } from 'antd';
+import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
   getMyProfile,
   getMemberProfile,
+  getMyMonthlyBreakdown,
+  getMemberMonthlyBreakdown,
   getMembers,
   type MyProfile,
   type Member,
   type MonthlyDueEntry,
   type Transaction,
+  type DuesInfo,
 } from '../../services/api';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -27,6 +31,10 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [loading, setLoading] = useState(!isAdmin);
   const [error, setError] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [yearBreakdown, setYearBreakdown] = useState<MonthlyDueEntry[] | null>(null);
+  const [yearDues, setYearDues] = useState<DuesInfo | null>(null);
+  const [yearBreakdownLoading, setYearBreakdownLoading] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
@@ -53,7 +61,12 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
         setLoading(true);
         setError(null);
         const data = isAdmin && selectedMemberId ? await getMemberProfile(selectedMemberId) : await getMyProfile();
-        if (!ignore) setProfile(data);
+        if (!ignore) {
+          setProfile(data);
+          setSelectedYear(data.currentYear);
+          setYearBreakdown(data.monthlyBreakdown);
+          setYearDues(data.dues);
+        }
       } catch (err) {
         if (!ignore) setError(err instanceof Error ? err.message : 'Failed to load profile');
       } finally {
@@ -65,6 +78,39 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
       ignore = true;
     };
   }, [isAdmin, selectedMemberId]);
+
+  useEffect(() => {
+    if (!profile || selectedYear === null) return;
+
+    if (selectedYear === profile.currentYear) {
+      setYearBreakdown(profile.monthlyBreakdown);
+      setYearDues(profile.dues);
+      return;
+    }
+
+    let ignore = false;
+    const loadYear = async () => {
+      try {
+        setYearBreakdownLoading(true);
+        const result =
+          isAdmin && selectedMemberId
+            ? await getMemberMonthlyBreakdown(selectedMemberId, selectedYear)
+            : await getMyMonthlyBreakdown(selectedYear);
+        if (!ignore) {
+          setYearBreakdown(result.breakdown);
+          setYearDues(result.dues);
+        }
+      } catch (err) {
+        if (!ignore) setError(err instanceof Error ? err.message : 'Failed to load monthly breakdown');
+      } finally {
+        if (!ignore) setYearBreakdownLoading(false);
+      }
+    };
+    loadYear();
+    return () => {
+      ignore = true;
+    };
+  }, [profile, selectedYear, isAdmin, selectedMemberId]);
 
   const transactionColumns: ColumnsType<Transaction> = [
     { title: 'Date', dataIndex: 'date', key: 'date', render: (d: string) => new Date(d).toLocaleDateString() },
@@ -180,44 +226,76 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
             </Card>
           )}
 
-          <Card className="profile-view-card" title="Payment Standing">
-            {!profile.dues.hasPlan ? (
-              <Alert message="No payment plan set for this account yet." type="info" showIcon />
-            ) : (
-              <Row gutter={16}>
-                <Col xs={24} sm={8}>
-                  <Statistic
-                    title="Expected So Far"
-                    value={profile.dues.expected ?? 0}
-                    precision={2}
-                    prefix={currencySymbol}
-                  />
-                </Col>
-                <Col xs={24} sm={8}>
-                  <Statistic title="Total Paid" value={profile.dues.paid} precision={2} prefix={currencySymbol} />
-                </Col>
-                <Col xs={24} sm={8}>
-                  <Statistic
-                    title="Credit Balance"
-                    value={-(profile.dues.due ?? 0)}
-                    precision={2}
-                    prefix={currencySymbol}
-                    styles={{ content: { color: -(profile.dues.due ?? 0) < 0 ? '#cf1322' : '#3f8600' } }}
-                  />
-                </Col>
-              </Row>
-            )}
-          </Card>
+          {(() => {
+            const isMonthlySelector = profile.member.payment_frequency === 'monthly' && !!profile.monthlyBreakdown;
+            const displayDues = isMonthlySelector ? yearDues ?? profile.dues : profile.dues;
+            const title = isMonthlySelector ? `Payment Standing (${selectedYear})` : 'Payment Standing';
+            return (
+              <Card className="profile-view-card" title={title}>
+                {!displayDues.hasPlan ? (
+                  <Alert message="No payment plan set for this account yet." type="info" showIcon />
+                ) : (
+                  <Spin spinning={isMonthlySelector && yearBreakdownLoading}>
+                    <Row gutter={16}>
+                      <Col xs={24} sm={8}>
+                        <Statistic
+                          title="Expected So Far"
+                          value={displayDues.expected ?? 0}
+                          precision={2}
+                          prefix={currencySymbol}
+                        />
+                      </Col>
+                      <Col xs={24} sm={8}>
+                        <Statistic title="Total Paid" value={displayDues.paid} precision={2} prefix={currencySymbol} />
+                      </Col>
+                      <Col xs={24} sm={8}>
+                        <Statistic
+                          title="Credit Balance"
+                          value={-(displayDues.due ?? 0)}
+                          precision={2}
+                          prefix={currencySymbol}
+                          styles={{ content: { color: -(displayDues.due ?? 0) < 0 ? '#cf1322' : '#3f8600' } }}
+                        />
+                      </Col>
+                    </Row>
+                  </Spin>
+                )}
+              </Card>
+            );
+          })()}
 
           {profile.dues.hasPlan && profile.monthlyBreakdown ? (
-            <Card className="profile-view-card" title={`${currentYear} Monthly Payment Report`}>
-              <Table
-                columns={monthlyColumns}
-                dataSource={profile.monthlyBreakdown}
-                rowKey={(row) => `${row.year}-${row.monthIndex}`}
-                pagination={false}
-                scroll={{ x: 'max-content' }}
-              />
+            <Card
+              className="profile-view-card"
+              title={
+                <div className="profile-view-year-selector">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<LeftOutlined />}
+                    disabled={selectedYear === null || selectedYear <= profile.joinYear}
+                    onClick={() => setSelectedYear((y) => (y !== null ? y - 1 : y))}
+                  />
+                  <span>{selectedYear} Monthly Payment Report</span>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<RightOutlined />}
+                    disabled={selectedYear === null || selectedYear >= profile.maxYear}
+                    onClick={() => setSelectedYear((y) => (y !== null ? y + 1 : y))}
+                  />
+                </div>
+              }
+            >
+              <Spin spinning={yearBreakdownLoading}>
+                <Table
+                  columns={monthlyColumns}
+                  dataSource={yearBreakdown ?? []}
+                  rowKey={(row) => `${row.year}-${row.monthIndex}`}
+                  pagination={false}
+                  scroll={{ x: 'max-content' }}
+                />
+              </Spin>
             </Card>
           ) : profile.dues.hasPlan && profile.member.payment_frequency === 'yearly' ? (
             <Card className="profile-view-card" title={`${currentYear} Payments`}>
