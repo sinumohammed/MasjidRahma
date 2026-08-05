@@ -106,12 +106,15 @@ export interface MonthlyDueEntry {
   year: number;
   monthIndex: number;
   label: string;
-  status: 'paid' | 'missed' | 'nil';
+  status: 'paid' | 'partial' | 'missed' | 'nil';
+  paidAmount?: number;
+  dueAmount?: number;
 }
 
 export interface MyProfile {
   member: Member;
   dues: DuesInfo;
+  lifetimeDues: DuesInfo;
   monthlyBreakdown: MonthlyDueEntry[] | null;
   transactions: Transaction[];
   currentYear: number;

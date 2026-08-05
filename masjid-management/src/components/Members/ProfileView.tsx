@@ -82,7 +82,14 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
   useEffect(() => {
     if (!profile || selectedYear === null) return;
 
-    if (selectedYear === profile.currentYear) {
+    // profile.dues already IS the current year's own figure for monthly
+    // plans (calculateDues/computeMonthlyBreakdownForYear reset every
+    // January), so it's safe to reuse without a round-trip. Yearly plans are
+    // different: profile.dues is lifetime-cumulative (same as
+    // lifetimeDues), so reusing it here would show the grand total instead
+    // of just this year's - those always go through the per-year API call
+    // below instead, even when selectedYear is the current year.
+    if (selectedYear === profile.currentYear && profile.member.payment_frequency === 'monthly') {
       setYearBreakdown(profile.monthlyBreakdown);
       setYearDues(profile.dues);
       return;
@@ -134,6 +141,7 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
 
   const monthStatusMeta: Record<MonthlyDueEntry['status'], { color: string; label: string }> = {
     paid: { color: 'green', label: 'Paid' },
+    partial: { color: 'orange', label: 'Partial' },
     missed: { color: 'red', label: 'Missed' },
     nil: { color: 'default', label: 'Nil' },
   };
@@ -144,8 +152,17 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      render: (status: MonthlyDueEntry['status']) => (
-        <Tag color={monthStatusMeta[status].color}>{monthStatusMeta[status].label}</Tag>
+      render: (status: MonthlyDueEntry['status'], row: MonthlyDueEntry) => (
+        <>
+          <Tag color={monthStatusMeta[status].color}>{monthStatusMeta[status].label}</Tag>
+          {status === 'partial' && (
+            <span className="profile-view-partial-note">
+              {currencySymbol}
+              {Number(row.paidAmount ?? 0).toFixed(2)} of {currencySymbol}
+              {Number(row.dueAmount ?? 0).toFixed(2)}
+            </span>
+          )}
+        </>
       ),
     },
   ];
@@ -161,12 +178,13 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
   ];
 
   const currentYear = profile?.currentYear ?? new Date().getFullYear();
+  const displayYear = selectedYear ?? currentYear;
   const yearlyPayments = profile
     ? profile.transactions.filter(
         (t) =>
           t.category === 'Masjid payment' &&
           t.type === 'income' &&
-          t.date.slice(0, 4) === String(currentYear)
+          t.date.slice(0, 4) === String(displayYear)
       )
     : [];
 
@@ -226,43 +244,39 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
             </Card>
           )}
 
-          {(() => {
-            const isMonthlySelector = profile.member.payment_frequency === 'monthly' && !!profile.monthlyBreakdown;
-            const displayDues = isMonthlySelector ? yearDues ?? profile.dues : profile.dues;
-            const title = isMonthlySelector ? `Payment Standing (${selectedYear})` : 'Payment Standing';
-            return (
-              <Card className="profile-view-card" title={title}>
-                {!displayDues.hasPlan ? (
-                  <Alert message="No payment plan set for this account yet." type="info" showIcon />
-                ) : (
-                  <Spin spinning={isMonthlySelector && yearBreakdownLoading}>
-                    <Row gutter={16}>
-                      <Col xs={24} sm={8}>
-                        <Statistic
-                          title="Expected So Far"
-                          value={displayDues.expected ?? 0}
-                          precision={2}
-                          prefix={currencySymbol}
-                        />
-                      </Col>
-                      <Col xs={24} sm={8}>
-                        <Statistic title="Total Paid" value={displayDues.paid} precision={2} prefix={currencySymbol} />
-                      </Col>
-                      <Col xs={24} sm={8}>
-                        <Statistic
-                          title="Credit Balance"
-                          value={-(displayDues.due ?? 0)}
-                          precision={2}
-                          prefix={currencySymbol}
-                          styles={{ content: { color: -(displayDues.due ?? 0) < 0 ? '#cf1322' : '#3f8600' } }}
-                        />
-                      </Col>
-                    </Row>
-                  </Spin>
-                )}
-              </Card>
-            );
-          })()}
+          <Card className="profile-view-card" title="Payment Standing">
+            {!profile.lifetimeDues.hasPlan ? (
+              <Alert message="No payment plan set for this account yet." type="info" showIcon />
+            ) : (
+              <Row gutter={16}>
+                <Col xs={24} sm={8}>
+                  <Statistic
+                    title="Total Expected"
+                    value={profile.lifetimeDues.expected ?? 0}
+                    precision={2}
+                    prefix={currencySymbol}
+                  />
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Statistic
+                    title="Total Paid"
+                    value={profile.lifetimeDues.paid}
+                    precision={2}
+                    prefix={currencySymbol}
+                  />
+                </Col>
+                <Col xs={24} sm={8}>
+                  <Statistic
+                    title={(profile.lifetimeDues.due ?? 0) < 0 ? 'Extra Paid' : 'Pending Dues'}
+                    value={Math.abs(profile.lifetimeDues.due ?? 0)}
+                    precision={2}
+                    prefix={currencySymbol}
+                    styles={{ content: { color: (profile.lifetimeDues.due ?? 0) > 0 ? '#cf1322' : '#3f8600' } }}
+                  />
+                </Col>
+              </Row>
+            )}
+          </Card>
 
           {profile.dues.hasPlan && profile.monthlyBreakdown ? (
             <Card
@@ -288,6 +302,25 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
               }
             >
               <Spin spinning={yearBreakdownLoading}>
+                {(() => {
+                  const yearStats = yearDues ?? profile.dues;
+                  return yearStats.hasPlan ? (
+                    <div className="profile-view-year-summary">
+                      <span>
+                        Expected: {currencySymbol}
+                        {Number(yearStats.expected ?? 0).toFixed(2)}
+                      </span>
+                      <span>
+                        Paid: {currencySymbol}
+                        {Number(yearStats.paid ?? 0).toFixed(2)}
+                      </span>
+                      <span style={{ color: (yearStats.due ?? 0) > 0 ? '#cf1322' : '#3f8600' }}>
+                        {(yearStats.due ?? 0) < 0 ? 'Extra Paid' : 'Balance'}: {currencySymbol}
+                        {Number(Math.abs(yearStats.due ?? 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
                 <Table
                   columns={monthlyColumns}
                   dataSource={yearBreakdown ?? []}
@@ -295,18 +328,76 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
                   pagination={false}
                   scroll={{ x: 'max-content' }}
                 />
+                <div className="profile-view-year-payments-heading">{displayYear} Payments</div>
+                <Table
+                  columns={yearlyPaymentColumns}
+                  dataSource={yearlyPayments}
+                  rowKey="id"
+                  pagination={false}
+                  scroll={{ x: 'max-content' }}
+                  locale={{ emptyText: 'No payments recorded this year' }}
+                />
               </Spin>
             </Card>
           ) : profile.dues.hasPlan && profile.member.payment_frequency === 'yearly' ? (
-            <Card className="profile-view-card" title={`${currentYear} Payments`}>
-              <Table
-                columns={yearlyPaymentColumns}
-                dataSource={yearlyPayments}
-                rowKey="id"
-                pagination={false}
-                scroll={{ x: 'max-content' }}
-                locale={{ emptyText: 'No payments recorded this year' }}
-              />
+            <Card
+              className="profile-view-card"
+              title={
+                <div className="profile-view-year-selector">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<LeftOutlined />}
+                    disabled={selectedYear === null || selectedYear <= profile.joinYear}
+                    onClick={() => setSelectedYear((y) => (y !== null ? y - 1 : y))}
+                  />
+                  <span>{displayYear} Payments</span>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<RightOutlined />}
+                    disabled={selectedYear === null || selectedYear >= profile.maxYear}
+                    onClick={() => setSelectedYear((y) => (y !== null ? y + 1 : y))}
+                  />
+                </div>
+              }
+            >
+              <Spin spinning={yearBreakdownLoading}>
+                {(() => {
+                  const yearStats = yearDues ?? profile.dues;
+                  if (!yearStats.hasPlan) return null;
+                  const isPartial = (yearStats.paid ?? 0) > 0 && (yearStats.due ?? 0) > 0;
+                  return (
+                    <div className="profile-view-year-summary">
+                      <span>
+                        Expected: {currencySymbol}
+                        {Number(yearStats.expected ?? 0).toFixed(2)}
+                      </span>
+                      <span>
+                        Paid: {currencySymbol}
+                        {Number(yearStats.paid ?? 0).toFixed(2)}
+                      </span>
+                      <span style={{ color: (yearStats.due ?? 0) > 0 ? '#cf1322' : '#3f8600' }}>
+                        {(yearStats.due ?? 0) < 0 ? 'Extra Paid' : 'Pending'}: {currencySymbol}
+                        {Number(Math.abs(yearStats.due ?? 0)).toFixed(2)}
+                        {isPartial && (
+                          <Tag color="orange" style={{ marginLeft: 8 }}>
+                            Partial
+                          </Tag>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })()}
+                <Table
+                  columns={yearlyPaymentColumns}
+                  dataSource={yearlyPayments}
+                  rowKey="id"
+                  pagination={false}
+                  scroll={{ x: 'max-content' }}
+                  locale={{ emptyText: 'No payments recorded this year' }}
+                />
+              </Spin>
             </Card>
           ) : (
             <Card className="profile-view-card" title="Transactions">

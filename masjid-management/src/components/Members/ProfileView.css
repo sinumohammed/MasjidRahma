@@ -9,6 +9,17 @@
   margin-top: 24px;
 }
 
+.profile-view-year-payments-heading {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin: 16px 0 8px;
+}
+
+:root[data-theme='dark'] .profile-view-year-payments-heading {
+  color: #d1d5db;
+}
+
 .profile-view-loading {
   display: flex;
   justify-content: center;
@@ -42,6 +53,29 @@
   justify-content: center;
   gap: 4px;
   width: 100%;
+}
+
+.profile-view-partial-note {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+:root[data-theme='dark'] .profile-view-partial-note {
+  color: #9ca3af;
+}
+
+.profile-view-year-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 12px;
+}
+
+:root[data-theme='dark'] .profile-view-year-summary {
+  color: #9ca3af;
 }
 
 .profile-view-card-header {

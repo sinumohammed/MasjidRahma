@@ -623,26 +623,46 @@ const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 // "count from this year's January" (the no-override default, resets every
 // year - see resolveMonthlyCoverage), while a non-zero value threads a
 // continuous month sequence from a dues_start override through however many
-// calendar years it takes to exhaust. Every month gets one of three statuses:
+// calendar years it takes to exhaust. Every month gets one of four statuses:
 //   - 'paid': its position in the sequence falls within the covered count
-//   - 'missed': not covered, and its month has already started (<= today)
+//   - 'partial': the first not-fully-covered month, when there's leftover
+//     money short of a full month - e.g. paying 4730 against a 4500 monthly
+//     amount covers one month fully with 230 left over, so the next month
+//     shows as partially paid instead of flatly 'missed'
+//   - 'missed': not covered (and no partial credit), and its month has
+//     already started (<= today)
 //   - 'nil': not covered, and it's still in the future - paying ahead is the
 //            member's choice, so an unpaid future month isn't "missed" yet
 // `startMonthIndex` (from resolveDuesStartMonthIndexForYear) forces every
 // month before it to 'nil' too - the member simply wasn't obligated yet.
-function buildMonthlyBreakdown(member, coveredMonths, year, cutoffMonthIndex, startMonthIndex = 0, sequenceOffset = 0) {
+function buildMonthlyBreakdown(member, coveredMonths, remainder, year, cutoffMonthIndex, startMonthIndex = 0, sequenceOffset = 0) {
   if (member.payment_frequency !== 'monthly') return null;
 
+  const monthlyAmount = Number(member.payment_amount);
   const entries = [];
   for (let m = 0; m <= 11; m++) {
     let status;
+    let paidAmount;
     if (m < startMonthIndex) {
       status = 'nil';
     } else {
       const relativeIndex = sequenceOffset + m;
-      status = relativeIndex >= 0 && relativeIndex < coveredMonths ? 'paid' : m <= cutoffMonthIndex ? 'missed' : 'nil';
+      if (relativeIndex >= 0 && relativeIndex < coveredMonths) {
+        status = 'paid';
+      } else if (relativeIndex === coveredMonths && remainder > 0) {
+        status = 'partial';
+        paidAmount = remainder;
+      } else {
+        status = m <= cutoffMonthIndex ? 'missed' : 'nil';
+      }
     }
-    entries.push({ year, monthIndex: m, label: MONTH_LABELS[m], status });
+    entries.push({
+      year,
+      monthIndex: m,
+      label: MONTH_LABELS[m],
+      status,
+      ...(status === 'partial' ? { paidAmount, dueAmount: monthlyAmount } : {}),
+    });
   }
   return entries;
 }
@@ -669,8 +689,9 @@ async function resolveMonthlyCoverage(member, year, today) {
   if (hasOverride) {
     const paid = await getMemberMasjidPaymentTotalSinceDuesStart(member);
     const coveredMonths = monthlyAmount > 0 ? Math.floor(paid / monthlyAmount) : 0;
+    const remainder = monthlyAmount > 0 ? paid - coveredMonths * monthlyAmount : 0;
     const sequenceOffset = (year - member.dues_start_year) * 12 - member.dues_start_month;
-    return { startMonthIndex, coveredMonths, sequenceOffset };
+    return { startMonthIndex, coveredMonths, remainder, sequenceOffset };
   }
 
   // No override: each year is its own ledger, EXCEPT that paying enough
@@ -688,21 +709,56 @@ async function resolveMonthlyCoverage(member, year, today) {
     paid = await getMemberMasjidPaymentTotalForYear(member, year);
   }
   const coveredMonths = monthlyAmount > 0 ? Math.floor(paid / monthlyAmount) : 0;
-  return { startMonthIndex, coveredMonths, sequenceOffset: 0 };
+  const remainder = monthlyAmount > 0 ? paid - coveredMonths * monthlyAmount : 0;
+  return { startMonthIndex, coveredMonths, remainder, sequenceOffset: 0 };
 }
 
 // How much of a no-override monthly payer's current-year payments are pure
 // advance - paid beyond fully covering all 12 months of this year - as a
 // rupee amount to carry into next year's `paid` (resolveMonthlyCoverage
-// above). Members with a dues_start override don't need this: their
-// coverage is already one continuous cross-year sequence.
+// above). Uses the raw rupee excess (not whole-month multiples) so a partial
+// 13th month (e.g. 230 of a 4500 monthly amount) still carries forward and
+// shows up as next year's 'partial' first month instead of being dropped.
+// Members with a dues_start override don't need this: their coverage is
+// already one continuous cross-year sequence.
 async function computeNoOverrideCarriedCredit(member, today) {
   const monthlyAmount = Number(member.payment_amount);
   if (!(monthlyAmount > 0)) return 0;
   const currentYearPaid = await getMemberMasjidPaymentTotal(member, today);
-  const coveredMonths = Math.floor(currentYearPaid / monthlyAmount);
-  const excessMonths = Math.max(coveredMonths - 12, 0);
-  return excessMonths * monthlyAmount;
+  return Math.max(currentYearPaid - 12 * monthlyAmount, 0);
+}
+
+// Yearly-plan equivalent of the monthly per-year breakdown below - one
+// "period" is a full year instead of a month. Lifetime paid is distributed
+// sequentially across periods starting at dues_start (or created_at): fully
+// covered periods count as fully paid, the next one absorbs whatever's left
+// over, and everything after that is unpaid - same sequential-coverage model
+// resolveMonthlyCoverage uses for monthly plans, just at year granularity.
+// This keeps per-year figures reconcilable with computeLifetimeDues/
+// calculateDues's cumulative total (both derive from the same lifetime paid
+// sum and the same start point).
+async function computeYearlyDuesForYear(member, year, today) {
+  const start =
+    member.dues_start_year != null && member.dues_start_month != null
+      ? { year: member.dues_start_year, monthIndex: member.dues_start_month }
+      : getMasjidYearMonth(new Date(member.created_at));
+  const periodIndex = year - start.year;
+  if (periodIndex < 0) {
+    return { hasPlan: true, expected: 0, paid: 0, due: 0, periodsOwed: 0 };
+  }
+
+  const yearlyAmount = Number(member.payment_amount);
+  const totalPaid = await getMemberMasjidPaymentTotal(member, today);
+  const coveredPeriods = yearlyAmount > 0 ? Math.floor(totalPaid / yearlyAmount) : 0;
+  const paidForYear =
+    periodIndex < coveredPeriods
+      ? yearlyAmount
+      : periodIndex === coveredPeriods
+        ? Math.max(totalPaid - coveredPeriods * yearlyAmount, 0)
+        : 0;
+  const expected = year <= today.year ? yearlyAmount : 0;
+  const periodsOwed = year <= today.year ? 1 : 0;
+  return { hasPlan: true, expected, paid: paidForYear, due: expected - paidForYear, periodsOwed };
 }
 
 // Monthly breakdown + dues standing for an arbitrary calendar year (not just
@@ -717,15 +773,25 @@ async function computeNoOverrideCarriedCredit(member, today) {
 // transactions, since under a dues_start override a payment recorded in one
 // calendar year can cover months in a different one.
 async function computeMonthlyBreakdownForYear(member, year, today) {
+  if (member.payment_frequency === 'yearly') {
+    if (member.payment_amount == null) {
+      return { breakdown: null, dues: { hasPlan: false, expected: null, paid: 0, due: null, periodsOwed: null } };
+    }
+    const dues = await computeYearlyDuesForYear(member, year, today);
+    return { breakdown: null, dues };
+  }
   if (member.payment_frequency !== 'monthly') {
     return { breakdown: null, dues: { hasPlan: false, expected: null, paid: 0, due: null, periodsOwed: null } };
   }
-  const { startMonthIndex, coveredMonths, sequenceOffset } = await resolveMonthlyCoverage(member, year, today);
+  const { startMonthIndex, coveredMonths, remainder, sequenceOffset } = await resolveMonthlyCoverage(member, year, today);
   const cutoffMonthIndex = year < today.year ? 11 : year === today.year ? today.monthIndex : -1;
-  const breakdown = buildMonthlyBreakdown(member, coveredMonths, year, cutoffMonthIndex, startMonthIndex, sequenceOffset);
+  const breakdown = buildMonthlyBreakdown(member, coveredMonths, remainder, year, cutoffMonthIndex, startMonthIndex, sequenceOffset);
 
   const monthlyAmount = Number(member.payment_amount);
-  const paidForYear = breakdown.filter((entry) => entry.status === 'paid').length * monthlyAmount;
+  const paidForYear = breakdown.reduce(
+    (sum, entry) => sum + (entry.status === 'paid' ? monthlyAmount : entry.status === 'partial' ? entry.paidAmount : 0),
+    0
+  );
 
   const periodsOwed =
     startMonthIndex >= 12
@@ -783,6 +849,36 @@ async function computeMonthlyMaxYearOffset(member, today) {
   return carriedCredit > 0 ? 1 : 0;
 }
 
+// Lifetime dues standing across every year the member has been on the
+// books, not just the current one - used for the profile's "Payment
+// Standing" card so a monthly payer's unpaid prior years (which
+// computeCurrentDuesAndBreakdown deliberately resets every January, see
+// resolveMonthlyCoverage) still show up in their overall pending balance.
+// Yearly plans are already lifetime-cumulative via calculateDues, so this
+// just delegates to that; monthly plans sum each year's own expected/paid/due
+// from joinYear through the current year (future years are excluded so an
+// overpaying member's carried-forward credit isn't double-counted).
+async function computeLifetimeDues(member, joinYear, today) {
+  if (member.payment_amount == null || !member.payment_frequency) {
+    return { hasPlan: false, expected: null, paid: 0, due: null, periodsOwed: null };
+  }
+  if (member.payment_frequency !== 'monthly') {
+    const paid = await getMemberMasjidPaymentTotal(member, today);
+    return calculateDues(member, paid, today);
+  }
+
+  let expected = 0;
+  let paid = 0;
+  let periodsOwed = 0;
+  for (let year = joinYear; year <= today.year; year++) {
+    const { dues } = await computeMonthlyBreakdownForYear(member, year, today);
+    expected += dues.expected ?? 0;
+    paid += dues.paid ?? 0;
+    periodsOwed += dues.periodsOwed ?? 0;
+  }
+  return { hasPlan: true, expected, paid, due: expected - paid, periodsOwed };
+}
+
 // Shared payload builder for both a member viewing their own profile and an
 // admin viewing a member's profile via the admin-only lookup route.
 async function buildMemberProfilePayload(member) {
@@ -810,7 +906,9 @@ async function buildMemberProfilePayload(member) {
   // the member's payment coverage actually reaches (computeMonthlyMaxYearOffset).
   const maxYear = today.year + (await computeMonthlyMaxYearOffset(member, today));
 
-  return { member, dues, monthlyBreakdown, transactions, currentYear: today.year, joinYear, maxYear };
+  const lifetimeDues = await computeLifetimeDues(member, joinYear, today);
+
+  return { member, dues, lifetimeDues, monthlyBreakdown, transactions, currentYear: today.year, joinYear, maxYear };
 }
 
 async function ensureRotationState() {
