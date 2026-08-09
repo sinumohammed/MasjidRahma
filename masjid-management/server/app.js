@@ -2311,13 +2311,18 @@ app.post('/api/push/unsubscribe', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Only a member can manage their own reminders' });
   }
   try {
-    // Delete every subscription row for this member, not just the endpoint
-    // the client currently holds - a stale/rotated endpoint from a previous
-    // browser session (iOS Safari/PWA push endpoints can rotate, e.g. after
-    // a service-worker update) otherwise survives as an orphan, which keeps
-    // the member showing as "notifications enabled" (hasPushSubscription is
-    // a count across all rows) even after they toggle it off.
-    await dbRun('DELETE FROM push_subscriptions WHERE member_id = $1', [req.user.memberId]);
+    // Only remove the endpoint the client currently holds - a member can be
+    // subscribed from multiple devices at once, and toggling notifications
+    // off on one device must not delete the others' rows. A stale/rotated
+    // endpoint from a previous browser session (iOS Safari/PWA push
+    // endpoints can rotate) is instead pruned lazily wherever a send to it
+    // fails with 404/410 (see sendPushToSubscriptions and friends).
+    const { endpoint } = req.body;
+    if (endpoint) {
+      await dbRun('DELETE FROM push_subscriptions WHERE member_id = $1 AND endpoint = $2', [req.user.memberId, endpoint]);
+    } else {
+      await dbRun('DELETE FROM push_subscriptions WHERE member_id = $1', [req.user.memberId]);
+    }
     res.json({ message: 'Unsubscribed' });
   } catch (error) {
     res.status(500).json({ error: error.message });
