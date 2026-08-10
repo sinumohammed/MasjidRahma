@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getAuthStatus, loginAdmin, setupAdmin, logActivity } from '../services/api';
+import { getAuthStatus, loginAdmin, setupAdmin, logActivity, SESSION_EXPIRED_EVENT } from '../services/api';
 
 const TOKEN_KEY = 'masjid_admin_token';
 const USERNAME_KEY = 'masjid_admin_username';
@@ -66,11 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logActivity('login');
   };
 
-  const logout = () => {
-    // Must fire while the token is still in localStorage - authHeaders()
-    // reads it synchronously when this call builds its fetch options, before
-    // the request actually goes out, so clearing storage right after is safe.
-    logActivity('logout');
+  const clearSessionState = () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USERNAME_KEY);
     localStorage.removeItem(IS_ADMIN_KEY);
@@ -80,6 +76,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAdmin(false);
     setMemberId(null);
   };
+
+  const logout = () => {
+    // Must fire while the token is still in localStorage - authHeaders()
+    // reads it synchronously when this call builds its fetch options, before
+    // the request actually goes out, so clearing storage right after is safe.
+    logActivity('logout');
+    clearSessionState();
+  };
+
+  // apiFetch already clears localStorage itself (before AuthProvider could
+  // possibly be listening), so this just syncs React state to match and
+  // skips logActivity('logout') - the token is already dead, so that call
+  // would just 401 again.
+  useEffect(() => {
+    const onSessionExpired = () => clearSessionState();
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, []);
 
   return (
     <AuthContext.Provider

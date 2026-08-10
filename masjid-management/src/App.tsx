@@ -29,7 +29,14 @@ import MyNotifications from './components/MyNotifications';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
 import { useAuth } from './context/AuthContext';
-import { getMyProfile, getAnnouncements, getMyNotifications, logActivity, type MemberType } from './services/api';
+import {
+  getMyProfile,
+  getAnnouncements,
+  getMyNotifications,
+  logActivity,
+  SESSION_EXPIRED_EVENT,
+  type MemberType,
+} from './services/api';
 import './App.css';
 import type { MenuProps } from 'antd';
 
@@ -105,6 +112,15 @@ function App() {
     lastLoggedViewRef.current = activeKey;
     logActivity('page_visit', activeKey);
   }, [activeKey]);
+
+  // A dead/expired token surfaces as a 401 from apiFetch (see services/api.ts),
+  // which clears the session and fires this event - pop the login modal
+  // straight away instead of leaving the user looking at a failed request.
+  useEffect(() => {
+    const onSessionExpired = () => setAuthModalOpen(true);
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, []);
 
   useEffect(() => {
     if (!isAdmin && (activeKey === 'transactions' || activeKey === 'activity' || activeKey === 'banks')) {

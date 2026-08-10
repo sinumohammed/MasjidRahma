@@ -160,15 +160,46 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// Fired when apiFetch clears a dead session so AuthContext/App can react
+// (log the user out, pop the login modal) without a circular import.
+export const SESSION_EXPIRED_EVENT = 'masjid-session-expired';
+
+// These auth endpoints legitimately return 401 for reasons unrelated to an
+// expired session (wrong password, wrong current password) - a valid token
+// can accompany a change-password request that still 401s, so gate the
+// interceptor on path, not on token presence.
+const AUTH_EXEMPT_PATHS = ['/auth/login', '/auth/setup', '/auth/change-password'];
+
+function clearStoredSession(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem('masjid_admin_username');
+  localStorage.removeItem('masjid_is_admin');
+  localStorage.removeItem('masjid_member_id');
+}
+
+// Wraps fetch so every authenticated request funnels through one place:
+// a 401 from requireAuth/requireAdmin (dead/expired token) clears the
+// session and throws before any caller gets a chance to read the body and
+// surface a generic "Failed to fetch X" message instead.
+async function apiFetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  const response = await window.fetch(input, init);
+  if (response.status === 401 && !AUTH_EXEMPT_PATHS.some((path) => String(input).includes(path))) {
+    clearStoredSession();
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    throw new Error('Session expired — please log in again.');
+  }
+  return response;
+}
+
 // Auth API Functions
 export const getAuthStatus = async (): Promise<{ hasAdmin: boolean }> => {
-  const response = await fetch(`${API_BASE_URL}/auth/status`);
+  const response = await apiFetch(`${API_BASE_URL}/auth/status`);
   if (!response.ok) throw new Error('Failed to check admin status');
   return response.json();
 };
 
 export const setupAdmin = async (username: string, password: string): Promise<AuthResponse> => {
-  const response = await fetch(`${API_BASE_URL}/auth/setup`, {
+  const response = await apiFetch(`${API_BASE_URL}/auth/setup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -179,7 +210,7 @@ export const setupAdmin = async (username: string, password: string): Promise<Au
 };
 
 export const loginAdmin = async (username: string, password: string): Promise<AuthResponse> => {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+  const response = await apiFetch(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -193,7 +224,7 @@ export const changePassword = async (
   currentPassword: string,
   newPassword: string
 ): Promise<{ message: string }> => {
-  const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+  const response = await apiFetch(`${API_BASE_URL}/auth/change-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ currentPassword, newPassword }),
@@ -205,7 +236,7 @@ export const changePassword = async (
 
 // API Functions
 export const getTransactions = async (range?: DateRangeParams): Promise<Transaction[]> => {
-  const response = await fetch(`${API_BASE_URL}/transactions${buildQuery(range)}`);
+  const response = await apiFetch(`${API_BASE_URL}/transactions${buildQuery(range)}`);
   if (!response.ok) throw new Error('Failed to fetch transactions');
   return response.json();
 };
@@ -213,19 +244,19 @@ export const getTransactions = async (range?: DateRangeParams): Promise<Transact
 export const getTransactionsByType = async (
   type: 'income' | 'expense'
 ): Promise<Transaction[]> => {
-  const response = await fetch(`${API_BASE_URL}/transactions/type/${type}`);
+  const response = await apiFetch(`${API_BASE_URL}/transactions/type/${type}`);
   if (!response.ok) throw new Error(`Failed to fetch ${type} transactions`);
   return response.json();
 };
 
 export const getSummary = async (range?: DateRangeParams): Promise<Summary> => {
-  const response = await fetch(`${API_BASE_URL}/summary${buildQuery(range)}`);
+  const response = await apiFetch(`${API_BASE_URL}/summary${buildQuery(range)}`);
   if (!response.ok) throw new Error('Failed to fetch summary');
   return response.json();
 };
 
 export const getCategoryStats = async (range?: DateRangeParams): Promise<CategoryStat[]> => {
-  const response = await fetch(`${API_BASE_URL}/transactions/category/stats${buildQuery(range)}`);
+  const response = await apiFetch(`${API_BASE_URL}/transactions/category/stats${buildQuery(range)}`);
   if (!response.ok) throw new Error('Failed to fetch category stats');
   return response.json();
 };
@@ -236,7 +267,7 @@ export const createTransaction = async (
     bankId?: string | null;
   }
 ): Promise<Transaction> => {
-  const response = await fetch(`${API_BASE_URL}/transactions`, {
+  const response = await apiFetch(`${API_BASE_URL}/transactions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
@@ -249,7 +280,7 @@ export const updateTransaction = async (
   id: string,
   data: Partial<Omit<Transaction, 'member_id' | 'bank_id'>> & { memberId?: string | null; bankId?: string | null }
 ): Promise<Transaction> => {
-  const response = await fetch(`${API_BASE_URL}/transactions/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/transactions/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
@@ -259,7 +290,7 @@ export const updateTransaction = async (
 };
 
 export const deleteTransaction = async (id: string): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/transactions/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/transactions/${id}`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -267,13 +298,13 @@ export const deleteTransaction = async (id: string): Promise<void> => {
 };
 
 export const getBanks = async (): Promise<Bank[]> => {
-  const response = await fetch(`${API_BASE_URL}/banks`);
+  const response = await apiFetch(`${API_BASE_URL}/banks`);
   if (!response.ok) throw new Error('Failed to fetch banks');
   return response.json();
 };
 
 export const createBank = async (name: string, openingBalance: number): Promise<Bank> => {
-  const response = await fetch(`${API_BASE_URL}/banks`, {
+  const response = await apiFetch(`${API_BASE_URL}/banks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ name, openingBalance }),
@@ -284,7 +315,7 @@ export const createBank = async (name: string, openingBalance: number): Promise<
 };
 
 export const updateBank = async (id: string, name: string, openingBalance: number): Promise<Bank> => {
-  const response = await fetch(`${API_BASE_URL}/banks/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/banks/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ name, openingBalance }),
@@ -295,7 +326,7 @@ export const updateBank = async (id: string, name: string, openingBalance: numbe
 };
 
 export const seedTransactions = async (count: number): Promise<{ message: string }> => {
-  const response = await fetch(`${API_BASE_URL}/transactions/seed`, {
+  const response = await apiFetch(`${API_BASE_URL}/transactions/seed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ count }),
@@ -307,7 +338,7 @@ export const seedTransactions = async (count: number): Promise<{ message: string
 // Members / food-supply rotation API Functions
 
 export const getMembers = async (): Promise<Member[]> => {
-  const response = await fetch(`${API_BASE_URL}/members`, { headers: { ...authHeaders() } });
+  const response = await apiFetch(`${API_BASE_URL}/members`, { headers: { ...authHeaders() } });
   if (!response.ok) throw new Error('Failed to fetch members');
   return response.json();
 };
@@ -325,7 +356,7 @@ export const createMember = async (
     duesStartMonthIndex?: number | null;
   }
 ): Promise<Member> => {
-  const response = await fetch(`${API_BASE_URL}/members`, {
+  const response = await apiFetch(`${API_BASE_URL}/members`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
@@ -350,7 +381,7 @@ export const updateMember = async (
     duesStartMonthIndex?: number | null;
   }
 ): Promise<Member> => {
-  const response = await fetch(`${API_BASE_URL}/members/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/members/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
@@ -361,14 +392,14 @@ export const updateMember = async (
 };
 
 export const getMyProfile = async (): Promise<MyProfile> => {
-  const response = await fetch(`${API_BASE_URL}/members/me`, { headers: { ...authHeaders() } });
+  const response = await apiFetch(`${API_BASE_URL}/members/me`, { headers: { ...authHeaders() } });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to fetch your profile');
   return result;
 };
 
 export const getMemberProfile = async (memberId: string): Promise<MyProfile> => {
-  const response = await fetch(`${API_BASE_URL}/members/${memberId}/profile`, { headers: { ...authHeaders() } });
+  const response = await apiFetch(`${API_BASE_URL}/members/${memberId}/profile`, { headers: { ...authHeaders() } });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to fetch member profile');
   return result;
@@ -381,7 +412,7 @@ export interface MonthlyBreakdownResult {
 }
 
 export const getMyMonthlyBreakdown = async (year: number): Promise<MonthlyBreakdownResult> => {
-  const response = await fetch(`${API_BASE_URL}/members/me/monthly-breakdown?year=${year}`, {
+  const response = await apiFetch(`${API_BASE_URL}/members/me/monthly-breakdown?year=${year}`, {
     headers: { ...authHeaders() },
   });
   const result = await response.json();
@@ -393,7 +424,7 @@ export const getMemberMonthlyBreakdown = async (
   memberId: string,
   year: number
 ): Promise<MonthlyBreakdownResult> => {
-  const response = await fetch(`${API_BASE_URL}/members/${memberId}/monthly-breakdown?year=${year}`, {
+  const response = await apiFetch(`${API_BASE_URL}/members/${memberId}/monthly-breakdown?year=${year}`, {
     headers: { ...authHeaders() },
   });
   const result = await response.json();
@@ -402,20 +433,20 @@ export const getMemberMonthlyBreakdown = async (
 };
 
 export const getTodayAssignment = async (): Promise<Assignment> => {
-  const response = await fetch(`${API_BASE_URL}/members/today`);
+  const response = await apiFetch(`${API_BASE_URL}/members/today`);
   if (!response.ok) throw new Error('Failed to fetch today\'s assignment');
   return response.json();
 };
 
 export const getSchedule = async (days: number = 14): Promise<Assignment[]> => {
-  const response = await fetch(`${API_BASE_URL}/members/schedule?days=${days}`);
+  const response = await apiFetch(`${API_BASE_URL}/members/schedule?days=${days}`);
   if (!response.ok) throw new Error('Failed to fetch schedule');
   return response.json();
 };
 
 export const getYearlySchedule = async (year?: number): Promise<YearlySchedule> => {
   const query = year ? `?year=${year}` : '';
-  const response = await fetch(`${API_BASE_URL}/members/yearly-schedule${query}`);
+  const response = await apiFetch(`${API_BASE_URL}/members/yearly-schedule${query}`);
   if (!response.ok) throw new Error('Failed to fetch yearly schedule');
   return response.json();
 };
@@ -432,7 +463,7 @@ export const createSwap = async (
   memberId: string,
   reason?: string
 ): Promise<SwapResult> => {
-  const response = await fetch(`${API_BASE_URL}/members/swap`, {
+  const response = await apiFetch(`${API_BASE_URL}/members/swap`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ date, memberId, reason }),
@@ -447,7 +478,7 @@ export const createMutualSwap = async (
   dateB: string,
   reason?: string
 ): Promise<{ dateA: SwapResult; dateB: SwapResult }> => {
-  const response = await fetch(`${API_BASE_URL}/members/swap/mutual`, {
+  const response = await apiFetch(`${API_BASE_URL}/members/swap/mutual`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ dateA, dateB, reason }),
@@ -458,7 +489,7 @@ export const createMutualSwap = async (
 };
 
 export const deleteSwap = async (date: string): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/members/swap/${date}`, {
+  const response = await apiFetch(`${API_BASE_URL}/members/swap/${date}`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -466,7 +497,7 @@ export const deleteSwap = async (date: string): Promise<void> => {
 };
 
 export const setCurrentMember = async (memberId: string): Promise<Assignment> => {
-  const response = await fetch(`${API_BASE_URL}/members/set-current`, {
+  const response = await apiFetch(`${API_BASE_URL}/members/set-current`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ memberId }),
@@ -477,14 +508,14 @@ export const setCurrentMember = async (memberId: string): Promise<Assignment> =>
 };
 
 export const getVapidPublicKey = async (): Promise<string | null> => {
-  const response = await fetch(`${API_BASE_URL}/push/vapid-public-key`);
+  const response = await apiFetch(`${API_BASE_URL}/push/vapid-public-key`);
   if (!response.ok) throw new Error('Failed to fetch VAPID public key');
   const result = await response.json();
   return result.publicKey;
 };
 
 export const subscribePush = async (subscription: PushSubscriptionJSON): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/push/subscribe`, {
+  const response = await apiFetch(`${API_BASE_URL}/push/subscribe`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(subscription),
@@ -494,7 +525,7 @@ export const subscribePush = async (subscription: PushSubscriptionJSON): Promise
 };
 
 export const unsubscribePush = async (endpoint: string): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/push/unsubscribe`, {
+  const response = await apiFetch(`${API_BASE_URL}/push/unsubscribe`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ endpoint }),
@@ -521,14 +552,14 @@ export interface PushSendResult {
 }
 
 export const getPendingDuesMembers = async (): Promise<PendingDuesMember[]> => {
-  const response = await fetch(`${API_BASE_URL}/admin/pending-dues`, { headers: { ...authHeaders() } });
+  const response = await apiFetch(`${API_BASE_URL}/admin/pending-dues`, { headers: { ...authHeaders() } });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to fetch pending dues');
   return result;
 };
 
 export const remindMember = async (memberId: string): Promise<PushSendResult> => {
-  const response = await fetch(`${API_BASE_URL}/push/remind/${memberId}`, {
+  const response = await apiFetch(`${API_BASE_URL}/push/remind/${memberId}`, {
     method: 'POST',
     headers: { ...authHeaders() },
   });
@@ -538,7 +569,7 @@ export const remindMember = async (memberId: string): Promise<PushSendResult> =>
 };
 
 export const remindAllPending = async (): Promise<PushSendResult & { checked: number; remindersSent: number }> => {
-  const response = await fetch(`${API_BASE_URL}/push/remind-all-pending`, {
+  const response = await apiFetch(`${API_BASE_URL}/push/remind-all-pending`, {
     method: 'POST',
     headers: { ...authHeaders() },
   });
@@ -548,7 +579,7 @@ export const remindAllPending = async (): Promise<PushSendResult & { checked: nu
 };
 
 export const sendAnnouncement = async (title: string, message: string): Promise<PushSendResult> => {
-  const response = await fetch(`${API_BASE_URL}/push/announce`, {
+  const response = await apiFetch(`${API_BASE_URL}/push/announce`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ title, message }),
@@ -574,7 +605,7 @@ export interface MemberNotification {
 }
 
 export const getMyNotifications = async (): Promise<MemberNotification[]> => {
-  const response = await fetch(`${API_BASE_URL}/my-notifications`, {
+  const response = await apiFetch(`${API_BASE_URL}/my-notifications`, {
     headers: { ...authHeaders() },
   });
   const result = await response.json();
@@ -583,7 +614,7 @@ export const getMyNotifications = async (): Promise<MemberNotification[]> => {
 };
 
 export const deleteMyNotification = async (id: string): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/my-notifications/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/my-notifications/${id}`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -594,7 +625,7 @@ export const deleteMyNotification = async (id: string): Promise<void> => {
 };
 
 export const clearMyNotifications = async (): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/my-notifications/clear`, {
+  const response = await apiFetch(`${API_BASE_URL}/my-notifications/clear`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -605,14 +636,14 @@ export const clearMyNotifications = async (): Promise<void> => {
 };
 
 export const getAnnouncements = async (): Promise<AnnouncementRecord[]> => {
-  const response = await fetch(`${API_BASE_URL}/announcements`);
+  const response = await apiFetch(`${API_BASE_URL}/announcements`);
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to load announcements');
   return result;
 };
 
 export const deleteAnnouncement = async (id: string): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/announcements/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/announcements/${id}`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -623,7 +654,7 @@ export const deleteAnnouncement = async (id: string): Promise<void> => {
 };
 
 export const clearAnnouncements = async (): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/announcements/clear`, {
+  const response = await apiFetch(`${API_BASE_URL}/announcements/clear`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
@@ -642,13 +673,13 @@ export interface Contact {
 }
 
 export const getContacts = async (): Promise<Contact[]> => {
-  const response = await fetch(`${API_BASE_URL}/contacts`);
+  const response = await apiFetch(`${API_BASE_URL}/contacts`);
   if (!response.ok) throw new Error('Failed to fetch contacts');
   return response.json();
 };
 
 export const updateContact = async (id: string, name: string, phone: string | null): Promise<Contact> => {
-  const response = await fetch(`${API_BASE_URL}/contacts/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/contacts/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ name, phone }),
@@ -706,14 +737,14 @@ export const getActivityLog = async (
   if (params.eventType) query.set('eventType', params.eventType);
   if (params.isAdmin !== undefined) query.set('isAdmin', String(params.isAdmin));
   const qs = query.toString();
-  const response = await fetch(`${API_BASE_URL}/activity${qs ? `?${qs}` : ''}`, { headers: { ...authHeaders() } });
+  const response = await apiFetch(`${API_BASE_URL}/activity${qs ? `?${qs}` : ''}`, { headers: { ...authHeaders() } });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to fetch activity log');
   return result;
 };
 
 export const deleteActivityEvents = async (ids: string[]): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/activity/delete`, {
+  const response = await apiFetch(`${API_BASE_URL}/activity/delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ ids }),
@@ -723,7 +754,7 @@ export const deleteActivityEvents = async (ids: string[]): Promise<void> => {
 };
 
 export const clearActivityLog = async (): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/activity/clear`, {
+  const response = await apiFetch(`${API_BASE_URL}/activity/clear`, {
     method: 'DELETE',
     headers: { ...authHeaders() },
   });
