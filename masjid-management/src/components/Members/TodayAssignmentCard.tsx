@@ -203,7 +203,7 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
         ) : error ? (
           <div className="today-assignment-error">{error}</div>
         ) : !assignment?.member ? (
-          <div className="today-assignment-empty">No active members set up yet.</div>
+          <div className="today-assignment-empty">സജീവ അംഗങ്ങളൊന്നും ഇതുവരെ സജ്ജീകരിച്ചിട്ടില്ല.</div>
         ) : (
           <div className={`today-assignment-split${isAdmin ? ' has-actions' : ''}`}>
             <div className="today-assignment-main">
@@ -215,9 +215,9 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
               />
               <div className="today-assignment-info">
                 <div className="today-assignment-heading">
-                  <span className="today-assignment-label">Food Today</span>
-                  {assignment.swapped && <Tag color="orange">Swapped</Tag>}
-                  {isMyTurnToday && <Tag color="green">It's your turn!</Tag>}
+                  <span className="today-assignment-label">ഇന്നത്തെ ഭക്ഷണം</span>
+                  {assignment.swapped && <Tag color="orange">മാറ്റം വരുത്തി</Tag>}
+                  {isMyTurnToday && <Tag color="green">നിങ്ങളുടെ ഊഴം!</Tag>}
                 </div>
                 <div className="today-assignment-name">{assignment.member.name}</div>
                 {assignment.member.phone && (
@@ -231,7 +231,7 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
                 )}
                 {assignment.swapped && assignment.originalMember && (
                   <div className="today-assignment-original">
-                    Originally: {assignment.originalMember.name}
+                    യഥാർത്ഥത്തിൽ: {assignment.originalMember.name}
                   </div>
                 )}
               </div>
@@ -243,27 +243,27 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
                   tomorrowAssignment?.member ? (
                     <>
                       <div className="today-assignment-side-label">
-                        <CalendarOutlined /> Next Up
+                        <CalendarOutlined /> അടുത്തത്
                       </div>
                       <div className="today-assignment-side-name">
                         {tomorrowAssignment.member.name}
                       </div>
                       <div className="today-assignment-side-desc">
-                        Scheduled for tomorrow's food duty.
+                        നാളത്തെ ഭക്ഷണ ചുമതലയ്ക്കായി ഷെഡ്യൂൾ ചെയ്തിരിക്കുന്നു.
                       </div>
                     </>
                   ) : (
                     <div className="today-assignment-side-empty">
-                      Tomorrow's home isn't set yet.
+                      നാളത്തെ വീട് ഇതുവരെ നിശ്ചയിച്ചിട്ടില്ല.
                     </div>
                   )
                 ) : isMyTurnToday ? (
                   <>
                     <div className="today-assignment-side-label">
-                      <CalendarOutlined /> Today
+                      <CalendarOutlined /> ഇന്ന്
                     </div>
                     <div className="today-assignment-side-desc">
-                      It's your turn to provide food today - thank you!
+                      ഇന്ന് ഭക്ഷണം നൽകേണ്ടത് നിങ്ങളുടെ ഊഴമാണ് - നന്ദി!
                     </div>
                   </>
                 ) : myNextTurn?.member ? (
@@ -275,18 +275,18 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
                     }}
                   >
                     <div className="today-assignment-side-label">
-                      <CalendarOutlined /> Your Turn
+                      <CalendarOutlined /> നിങ്ങളുടെ ഊഴം
                     </div>
                     <div className="today-assignment-side-name">
                       {dayjs(myNextTurn.date).format('ddd, MMM D')}
                     </div>
                     <div className="today-assignment-side-desc">
-                      Tap to set a reminder for your next turn.
+                      നിങ്ങളുടെ അടുത്ത ഊഴത്തിന് ഓർമ്മപ്പെടുത്തൽ സജ്ജമാക്കാൻ ടാപ്പ് ചെയ്യുക.
                     </div>
                   </div>
                 ) : (
                   <div className="today-assignment-side-empty">
-                    No upcoming turn found in the next {NEXT_TURN_LOOKAHEAD_DAYS} days.
+                    അടുത്ത {NEXT_TURN_LOOKAHEAD_DAYS} ദിവസത്തിനുള്ളിൽ വരാനിരിക്കുന്ന ഊഴം കണ്ടെത്തിയില്ല.
                   </div>
                 )}
               </div>
@@ -295,7 +295,7 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
             {isAdmin && (
               <div className="today-assignment-actions" onClick={(e) => e.stopPropagation()}>
                 {assignment.swapped && (
-                  <Tooltip title="Revert to original home">
+                  <Tooltip title="യഥാർത്ഥ വീട്ടിലേക്ക് തിരികെ മാറ്റുക">
                     <Button
                       icon={<UndoOutlined />}
                       shape="circle"
@@ -306,7 +306,7 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
                     />
                   </Tooltip>
                 )}
-                <Tooltip title="Swap or set today's home">
+                <Tooltip title="ഇന്നത്തെ വീട് മാറ്റുക അല്ലെങ്കിൽ സജ്ജമാക്കുക">
                   <Button
                     icon={<SwapOutlined />}
                     shape="circle"
