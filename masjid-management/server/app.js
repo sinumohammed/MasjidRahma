@@ -1080,8 +1080,8 @@ async function sendTomorrowAssignmentReminders() {
   const member = await dbGet('SELECT * FROM members WHERE id = $1', [memberId]);
   const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [memberId]);
 
-  const title = 'Masjid Food Day Reminder';
-  const body = `You're on food duty tomorrow (${tomorrowStr}).`;
+  const title = 'മസ്ജിദ് ഭക്ഷണ ഓർമ്മപ്പെടുത്തൽ';
+  const body = `നാളെ (${tomorrowStr}) ഭക്ഷണ ചുമതല നിങ്ങളുടേതാണ്.`;
   await recordMemberNotification(memberId, title, body);
   const payload = JSON.stringify({ title, body, url: '/?view=my-notifications' });
 
