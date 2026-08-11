@@ -1522,7 +1522,7 @@ app.post('/api/auth/setup', async (req, res) => {
       'INSERT INTO users (id, username, password_hash, is_admin) VALUES ($1, $2, $3, true)',
       [id, username, passwordHash]
     );
-    const token = jwt.sign({ id, username, isAdmin: true, memberId: null }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id, username, isAdmin: true, memberId: null }, JWT_SECRET, { expiresIn: '30d' });
     res.status(201).json({ token, username, isAdmin: true, memberId: null });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1569,7 +1569,36 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign(
       { id: user.id, username: user.username, isAdmin: user.is_admin, memberId: user.member_id || null },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '30d' }
+    );
+    res.json({ token, username: user.username, isAdmin: user.is_admin, memberId: user.member_id || null });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Auth: sliding-session refresh - called by the frontend on app load while a
+// token is present, so a user who opens the app at least once a month never
+// hits a hard expiry, while an untouched token still dies after 30 days.
+// requireAuth already rejects an expired/invalid token with 401, so this
+// only ever re-issues a token that was still good - the frontend's apiFetch
+// interceptor treats a 401 here exactly like any other expired session.
+app.post('/api/auth/refresh', requireAuth, async (req, res) => {
+  try {
+    const user = await dbGet('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    if (user.member_id) {
+      const member = await dbGet('SELECT active FROM members WHERE id = $1', [user.member_id]);
+      if (!member || !member.active) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+    }
+    const token = jwt.sign(
+      { id: user.id, username: user.username, isAdmin: user.is_admin, memberId: user.member_id || null },
+      JWT_SECRET,
+      { expiresIn: '30d' }
     );
     res.json({ token, username: user.username, isAdmin: user.is_admin, memberId: user.member_id || null });
   } catch (error) {

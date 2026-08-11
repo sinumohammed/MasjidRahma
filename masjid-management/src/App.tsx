@@ -422,13 +422,13 @@ function App() {
           />
         );
       case 'members':
-        return <MembersList initialTypeFilter={membersTypeFilter} />;
+        return isLoggedIn ? <MembersList initialTypeFilter={membersTypeFilter} /> : <Dashboard />;
       case 'activity':
         return isAdmin ? <ActivityLog /> : <Dashboard />;
       case 'yearly-schedule':
         return <YearlyScheduleView />;
       case 'settings':
-        return <SettingsPage />;
+        return isLoggedIn ? <SettingsPage /> : <Dashboard />;
       default:
         return <Dashboard />;
     }

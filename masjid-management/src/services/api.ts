@@ -220,6 +220,20 @@ export const loginAdmin = async (username: string, password: string): Promise<Au
   return data;
 };
 
+// Sliding-session refresh - re-issues a fresh 30-day token for a still-valid
+// one. Intentionally NOT in AUTH_EXEMPT_PATHS: a 401 here means the token is
+// genuinely dead, and should go through the normal apiFetch session-expiry
+// handling (clear storage, pop the login modal) like any other endpoint.
+export const refreshSession = async (): Promise<AuthResponse> => {
+  const response = await apiFetch(`${API_BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: { ...authHeaders() },
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Failed to refresh session');
+  return result;
+};
+
 export const changePassword = async (
   currentPassword: string,
   newPassword: string

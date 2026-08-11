@@ -1,11 +1,50 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { getAuthStatus, loginAdmin, setupAdmin, logActivity, SESSION_EXPIRED_EVENT } from '../services/api';
+import {
+  getAuthStatus,
+  loginAdmin,
+  setupAdmin,
+  logActivity,
+  refreshSession,
+  SESSION_EXPIRED_EVENT,
+} from '../services/api';
 
 const TOKEN_KEY = 'masjid_admin_token';
 const USERNAME_KEY = 'masjid_admin_username';
 const IS_ADMIN_KEY = 'masjid_is_admin';
 const MEMBER_ID_KEY = 'masjid_member_id';
+
+function clearStoredSessionStorage(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USERNAME_KEY);
+  localStorage.removeItem(IS_ADMIN_KEY);
+  localStorage.removeItem(MEMBER_ID_KEY);
+}
+
+// Reads exp out of the JWT payload without verifying the signature (that's
+// the server's job) - just enough to catch an obviously-dead token on the
+// very first render, before any network round trip. A malformed token
+// counts as expired rather than risking an infinite-loop of bad requests.
+function isTokenExpired(token: string): boolean {
+  try {
+    const payloadB64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(payloadB64));
+    return typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now();
+  } catch {
+    return true;
+  }
+}
+
+// Runs once at module load, not inside a component - a useState initializer
+// re-runs on StrictMode's dev-only double-mount, and by the second run the
+// storage this already cleared would make it look like there was nothing to
+// clear, silently skipping the SESSION_EXPIRED_EVENT dispatch below.
+const expiredTokenOnLoad = (() => {
+  const storedToken = localStorage.getItem(TOKEN_KEY);
+  const dead = !!storedToken && isTokenExpired(storedToken);
+  if (dead) clearStoredSessionStorage();
+  return dead;
+})();
 
 interface AuthContextValue {
   isAdmin: boolean;
@@ -21,11 +60,22 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // expiredTokenOnLoad already cleared localStorage (at module load, before
+  // this component ever ran) if the stored token was dead, so these
+  // initializers naturally come up empty/false - admin-gated views render as
+  // logged-out on the very first paint instead of waiting on a round trip.
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem(USERNAME_KEY));
   const [isAdmin, setIsAdmin] = useState<boolean>(() => localStorage.getItem(IS_ADMIN_KEY) === 'true');
   const [memberId, setMemberId] = useState<string | null>(() => localStorage.getItem(MEMBER_ID_KEY));
   const [hasAdmin, setHasAdmin] = useState<boolean | null>(null);
+
+  // Deferred to an effect (can't dispatch a DOM event during render) so the
+  // login modal still pops for a token that expired while the tab was
+  // closed, same as one that expires mid-session.
+  useEffect(() => {
+    if (expiredTokenOnLoad) window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }, []);
 
   useEffect(() => {
     getAuthStatus()
@@ -54,6 +104,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (newIsAdmin) setHasAdmin(true);
   };
 
+  // Sliding session: revalidate + extend the token once per app load. A
+  // visit at least once a month keeps renewing the 30-day window; an
+  // untouched token still dies after 30 days. A failed refresh is already handled by
+  // the SESSION_EXPIRED_EVENT listener below (apiFetch clears storage and
+  // fires it on the 401), so this just swallows the rejection - no need to
+  // react to it twice.
+  useEffect(() => {
+    if (!localStorage.getItem(TOKEN_KEY)) return;
+    refreshSession()
+      .then((result) => applySession(result.token, result.username, result.isAdmin, result.memberId))
+      .catch(() => {});
+  }, []);
+
   const login = async (loginUsername: string, password: string) => {
     const result = await loginAdmin(loginUsername, password);
     applySession(result.token, result.username, result.isAdmin, result.memberId);
@@ -67,10 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const clearSessionState = () => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USERNAME_KEY);
-    localStorage.removeItem(IS_ADMIN_KEY);
-    localStorage.removeItem(MEMBER_ID_KEY);
+    clearStoredSessionStorage();
     setToken(null);
     setUsername(null);
     setIsAdmin(false);
