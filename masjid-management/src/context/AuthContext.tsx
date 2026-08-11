@@ -55,6 +55,7 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   setupAccount: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  checkSessionExpiry: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -155,9 +156,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
   }, []);
 
+  // The mount-time expiry check only catches a token that was already dead
+  // when the tab opened. Since most GET endpoints are public (see
+  // CLAUDE.md), just sitting on a page like Transactions/Banks/Members never
+  // calls a protected endpoint and never trips the 401 interceptor, so
+  // isAdmin/isLoggedIn would otherwise stay stuck "true" indefinitely past
+  // expiry - or past storage being wiped out from under a still-running tab
+  // (e.g. devtools "Clear site data"), which leaves no token to even decode.
+  // Treat "React thinks we're logged in but storage now disagrees" as
+  // equally dead as an expired token, not just a no-op.
+  //
+  // Deliberately does NOT dispatch SESSION_EXPIRED_EVENT - App.tsx calls
+  // this synchronously before its own setActiveKey in every nav handler, so
+  // dispatching here would fire App's listener with the *old* activeKey
+  // (the click hasn't re-rendered yet) and could pop the login modal over a
+  // view that doesn't need one, e.g. Yearly Schedule. Clearing state here is
+  // enough - App's own [isAdmin, isLoggedIn, activeKey] effect reacts to the
+  // (batched) state change and already knows exactly which views require a
+  // login prompt.
+  const isSessionDead = () => {
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    return storedToken ? isTokenExpired(storedToken) : !!token;
+  };
+
+  const checkSessionExpiry = () => {
+    if (isSessionDead()) clearSessionState();
+  };
+
+  // Focus/visibilitychange has no accompanying activeKey change to react
+  // to, so this is the one place a bare SESSION_EXPIRED_EVENT dispatch is
+  // still correct - App's listener reads whatever page is *currently*
+  // showing (nothing is mid-navigation) and decides from there.
+  useEffect(() => {
+    const recheckAndNotify = () => {
+      if (isSessionDead()) {
+        clearSessionState();
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') recheckAndNotify();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', recheckAndNotify);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', recheckAndNotify);
+    };
+  }, [token]);
+
   return (
     <AuthContext.Provider
-      value={{ isAdmin, isLoggedIn: !!token, memberId, username, hasAdmin, login, setupAccount, logout }}
+      value={{
+        isAdmin,
+        isLoggedIn: !!token,
+        memberId,
+        username,
+        hasAdmin,
+        login,
+        setupAccount,
+        logout,
+        checkSessionExpiry,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -53,9 +53,24 @@ const getAnnouncementsReadKey = (user: string | null) => `${ANNOUNCEMENTS_READ_K
 const MY_NOTIFICATIONS_READ_KEY_PREFIX = 'masjid_my_notifications_read_at_';
 const getMyNotificationsReadKey = (user: string | null) => `${MY_NOTIFICATIONS_READ_KEY_PREFIX}${user || 'anonymous'}`;
 
+// Views a session is required for - Dashboard and Yearly Schedule are
+// intentionally excluded, they must stay visible to anonymous/expired
+// visitors, so a SESSION_EXPIRED_EVENT while sitting on one of those must
+// not pop the login modal uninvited.
+const SESSION_REQUIRED_KEYS = new Set([
+  'transactions',
+  'banks',
+  'activity',
+  'profile',
+  'members',
+  'settings',
+  'announcements',
+  'my-notifications',
+]);
+
 function App() {
   const { theme } = useSettings();
-  const { isAdmin, isLoggedIn, memberId, username, hasAdmin, logout } = useAuth();
+  const { isAdmin, isLoggedIn, memberId, username, hasAdmin, logout, checkSessionExpiry } = useAuth();
   const [activeKey, setActiveKey] = useState<string>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -68,22 +83,31 @@ function App() {
   const [unreadMyNotifications, setUnreadMyNotifications] = useState(0);
 
   const navigateToTransactions = (filter: TransactionFilter) => {
+    checkSessionExpiry();
     setTransactionsFilter(filter);
     setActiveKey('transactions');
   };
 
   const navigateToMembers = (typeFilter?: MemberType) => {
+    checkSessionExpiry();
     setMembersTypeFilter(typeFilter);
     setActiveKey('members');
   };
 
   const navigateToBanks = (bankId?: string) => {
+    checkSessionExpiry();
     setBanksFilter(bankId);
     setActiveKey('banks');
   };
 
-  const openAnnouncements = () => setActiveKey('announcements');
-  const openMyNotifications = () => setActiveKey('my-notifications');
+  const openAnnouncements = () => {
+    checkSessionExpiry();
+    setActiveKey('announcements');
+  };
+  const openMyNotifications = () => {
+    checkSessionExpiry();
+    setActiveKey('my-notifications');
+  };
 
   useEffect(() => {
     if (!isLoggedIn || isAdmin || !memberId) {
@@ -113,18 +137,35 @@ function App() {
     logActivity('page_visit', activeKey);
   }, [activeKey]);
 
-  // A dead/expired token surfaces as a 401 from apiFetch (see services/api.ts),
-  // which clears the session and fires this event - pop the login modal
-  // straight away instead of leaving the user looking at a failed request.
+  // A dead/expired token surfaces as a 401 from apiFetch (see services/api.ts)
+  // or from AuthContext's focus/visibilitychange recheck, either of which
+  // clears the session and fires this event - pop the login modal, but only
+  // if the page currently on screen actually needs a session (Dashboard and
+  // Yearly Schedule don't, and shouldn't get an uninvited login prompt).
   useEffect(() => {
-    const onSessionExpired = () => setAuthModalOpen(true);
+    const onSessionExpired = () => {
+      if (SESSION_REQUIRED_KEYS.has(activeKey)) setAuthModalOpen(true);
+    };
     window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
-  }, []);
+  }, [activeKey]);
+
+  // Most GETs are public (see CLAUDE.md), so simply sitting on/navigating to
+  // an admin page never calls a protected endpoint and never trips the
+  // apiFetch 401 interceptor on its own - re-check the token's exp on every
+  // navigation so a session that died while this tab sat open still gets
+  // caught before isAdmin/isLoggedIn are read below.
+  useEffect(() => {
+    checkSessionExpiry();
+  }, [activeKey, checkSessionExpiry]);
 
   useEffect(() => {
     if (!isAdmin && (activeKey === 'transactions' || activeKey === 'activity' || activeKey === 'banks')) {
       setActiveKey('dashboard');
+      // Only pop the login modal for a dropped/missing session - a member
+      // who's logged in but just isn't an admin doesn't need a login prompt,
+      // they need to be on Dashboard instead.
+      if (!isLoggedIn) setAuthModalOpen(true);
     }
     if (
       !isLoggedIn &&
@@ -135,6 +176,7 @@ function App() {
         activeKey === 'my-notifications')
     ) {
       setActiveKey('dashboard');
+      setAuthModalOpen(true);
     }
     // My Notifications is member-specific - admins have no personal
     // notifications of their own, so bounce them to Dashboard too.
@@ -231,8 +273,8 @@ function App() {
 
   // Land directly on Announcements or My Notifications when opened via a
   // push-notification tap (service worker sends url: '/?view=<key>') - only
-  // meaningful once logged in, so the redirect effect above bounces it back
-  // to Dashboard for anonymous visitors instead.
+  // meaningful once logged in, so the redirect effect above bounces an
+  // anonymous visitor back to Dashboard and pops the login modal instead.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
@@ -337,8 +379,10 @@ function App() {
 
   const handleUserMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'logout') logout();
-    if (e.key === 'announcements') setActiveKey('announcements');
-    if (e.key === 'my-notifications') setActiveKey('my-notifications');
+    if (e.key === 'announcements' || e.key === 'my-notifications') {
+      checkSessionExpiry();
+      setActiveKey(e.key);
+    }
   };
 
   const renderContent = () => {
@@ -435,6 +479,7 @@ function App() {
   };
 
   const handleMenuClick: MenuProps['onClick'] = (e) => {
+    checkSessionExpiry();
     if (e.key === 'transactions') setTransactionsFilter(null);
     if (e.key === 'members') setMembersTypeFilter(undefined);
     if (e.key === 'banks') setBanksFilter(undefined);
