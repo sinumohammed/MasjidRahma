@@ -52,7 +52,7 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
   const [reverting, setReverting] = useState(false);
 
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
-  const [reminderSubject, setReminderSubject] = useState('Masjid Food Day - Your Turn');
+  const [reminderSubject, setReminderSubject] = useState('മസ്ജിദ് ഭക്ഷണ ദിനം - നിങ്ങളുടെ ഊഴം');
   const [reminderDate, setReminderDate] = useState<Dayjs>(masjidTodayDayjs());
 
   const loadAssignment = async () => {
@@ -165,15 +165,15 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
 
   const openReminderModal = () => {
     if (!myNextTurn) return;
-    setReminderSubject('Masjid Food Day - Your Turn');
+    setReminderSubject('മസ്ജിദ് ഭക്ഷണ ദിനം - നിങ്ങളുടെ ഊഴം');
     setReminderDate(dayjs(myNextTurn.date));
     setReminderModalOpen(true);
   };
 
   const handleAddToGoogleCalendar = () => {
     const url = buildGoogleCalendarUrl({
-      title: reminderSubject || 'Masjid Food Day',
-      description: 'Food duty reminder from Masjid Rahma.',
+      title: reminderSubject || 'മസ്ജിദ് ഭക്ഷണ ദിനം',
+      description: 'മസ്ജിദ് റഹ്മയിൽ നിന്നുള്ള ഭക്ഷണ ചുമതല ഓർമ്മപ്പെടുത്തൽ.',
       date: reminderDate.format('YYYY-MM-DD'),
     });
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -181,11 +181,11 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
 
   const handleDownloadIcs = () => {
     downloadIcsReminder({
-      title: reminderSubject || 'Masjid Food Day',
-      description: 'Food duty reminder from Masjid Rahma.',
+      title: reminderSubject || 'മസ്ജിദ് ഭക്ഷണ ദിനം',
+      description: 'മസ്ജിദ് റഹ്മയിൽ നിന്നുള്ള ഭക്ഷണ ചുമതല ഓർമ്മപ്പെടുത്തൽ.',
       date: reminderDate.format('YYYY-MM-DD'),
     });
-    message.success('Calendar file downloaded');
+    message.success('കലണ്ടർ ഫയൽ ഡൗൺലോഡ് ചെയ്തു');
   };
 
   const isMyTurnToday = !isAdmin && isLoggedIn && !!memberId && assignment?.member?.id === memberId;
@@ -414,22 +414,22 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
       </Modal>
 
       <Modal
-        title="Set a Reminder"
+        title="ഓർമ്മപ്പെടുത്തൽ സജ്ജമാക്കുക"
         open={reminderModalOpen}
         onCancel={() => setReminderModalOpen(false)}
         footer={null}
       >
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <div>
-            <div className="swap-modal-field-label">Subject</div>
+            <div className="swap-modal-field-label">വിഷയം</div>
             <Input
               value={reminderSubject}
               onChange={(e) => setReminderSubject(e.target.value)}
-              placeholder="Reminder subject"
+              placeholder="ഓർമ്മപ്പെടുത്തലിന്റെ വിഷയം"
             />
           </div>
           <div>
-            <div className="swap-modal-field-label">Date</div>
+            <div className="swap-modal-field-label">തീയതി</div>
             <DatePicker
               value={reminderDate}
               onChange={(d) => d && setReminderDate(d)}
@@ -439,14 +439,14 @@ export default function TodayAssignmentCard({ onOpenYearlySchedule }: TodayAssig
           </div>
           <Space wrap>
             <Button type="primary" icon={<CalendarOutlined />} onClick={handleAddToGoogleCalendar}>
-              Add to Google Calendar
+              Google കലണ്ടറിൽ ചേർക്കുക
             </Button>
             <Button icon={<BellOutlined />} onClick={handleDownloadIcs}>
-              Download .ics
+              .ics ഡൗൺലോഡ് ചെയ്യുക
             </Button>
           </Space>
           <div className="swap-modal-hint">
-            Adds a one-day event to your calendar app, which handles the actual reminder/notification for you.
+            ഇത് നിങ്ങളുടെ കലണ്ടർ ആപ്പിൽ ഒരു ദിവസത്തെ ഇവന്റ് ചേർക്കും; യഥാർത്ഥ ഓർമ്മപ്പെടുത്തൽ/അറിയിപ്പ് കലണ്ടർ ആപ്പ് തന്നെ കൈകാര്യം ചെയ്യും.
           </div>
         </Space>
       </Modal>
