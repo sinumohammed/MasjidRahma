@@ -49,6 +49,7 @@ Neon (Postgres, serverless, free tier)
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Push notification signing keypair (optional — app runs fine without these, just no reminders sent) | `npx web-push generate-vapid-keys` |
 | `VAPID_SUBJECT` | Contact address push services may use to reach you about the keys, e.g. `mailto:you@example.com` | Pick one |
 | `CRON_SECRET` | Shared secret the GitHub Actions daily reminder job sends as `x-cron-secret` to `/api/push/run-daily-check` and `/api/push/run-monthly-dues-check` | Generate a long random string, also add as a GitHub repo secret with the same value |
+| `MASJID_AI_TOKEN` | Read-only access for the AI assistant: `/api/ai/*` (today's duty, schedule, members, pending dues, finance summary, transactions, announcements - no phones or addresses), sent as `Authorization: Bearer <token>`. Optional - unset, those endpoints answer 503 | Generate a long random string; the same value goes into the AI service's app entry (`MASJID_AI_TOKEN` in its `.env`) |
 
 ### Frontend (Vercel) — set in Vercel dashboard → Project → Settings → Environment Variables
 | Variable | Purpose |

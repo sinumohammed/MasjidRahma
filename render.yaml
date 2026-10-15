@@ -20,3 +20,5 @@ services:
         sync: false
       - key: CRON_SECRET
         sync: false
+      - key: MASJID_AI_TOKEN
+        sync: false

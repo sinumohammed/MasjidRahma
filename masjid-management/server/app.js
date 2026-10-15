@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -9,6 +10,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import webpush from 'web-push';
 import { waitUntil } from '@vercel/functions';
+import { AI_OPENAPI } from './aiOpenapi.js';
 
 // Load server/.env by absolute path rather than relying on dotenv's default
 // (relative to process.cwd()) - the local/Render entry (server/index.js) and
@@ -2658,6 +2660,195 @@ app.post('/api/activity/delete', requireAdmin, async (req, res) => {
 });
 
 // Health check
+// --- Read-only API for the AI assistant (/api/ai/*) ---
+// The AI chat service (a separate app) answers members' questions from this
+// data: "who supplies food today?", "who has pending dues?", "how much was
+// spent last month?". Separate from the routes the app's own screens use, so
+// a UI change never breaks it, and shaped for the AI: only GET, and only the
+// fields it needs - no phone numbers, addresses, push subscriptions, activity
+// logs or login data. Access is one long random token (MASJID_AI_TOKEN, set
+// on Render), sent as "Authorization: Bearer <token>" - not the admin login,
+// so it can only read these endpoints and survives a password change. Without
+// MASJID_AI_TOKEN the whole section answers 503. The endpoints are described
+// for the AI in aiOpenapi.js (served at /api/ai/openapi.json).
+const MASJID_AI_TOKEN = process.env.MASJID_AI_TOKEN;
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest();
+
+function requireAiToken(req, res, next) {
+  if (!MASJID_AI_TOKEN) return res.status(503).json({ error: 'AI access is not configured (MASJID_AI_TOKEN)' });
+  const given = getBearerToken(req) ?? '';
+  // Compared as hashes with timingSafeEqual, so the time taken says nothing about the token.
+  if (!crypto.timingSafeEqual(sha256(given), sha256(MASJID_AI_TOKEN))) {
+    return res.status(401).json({ error: 'AI access token required' });
+  }
+  next();
+}
+
+const ai = express.Router();
+ai.use(requireAiToken);
+
+const weekdayOf = (dateStr) => new Date(`${dateStr}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
+const isDateStr = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
+const clampInt = (value, min, max, fallback) => Math.min(Math.max(parseInt(value, 10) || fallback, min), max);
+const nameOf = (member) => (member ? { id: member.unique_id, name: member.name } : null);
+// "Fatima" or "M12" -> rows whose name or member id contains it.
+const matches = (search) => {
+  const s = String(search ?? '').trim().toLowerCase();
+  return (m) => !s || m.name.toLowerCase().includes(s) || String(m.unique_id).toLowerCase().includes(s);
+};
+const aiRoute = (fn) => async (req, res) => {
+  try {
+    res.json(await fn(req));
+  } catch (error) {
+    res.status(error.status ?? 500).json({ error: error.status ? error.message : 'Server error' });
+  }
+};
+const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
+
+ai.get('/openapi.json', (req, res) => res.json(AI_OPENAPI));
+
+ai.get('/today-duty', aiRoute(async () => {
+  const a = await getTodaysAssignment();
+  return {
+    date: a.date,
+    weekday: weekdayOf(a.date),
+    member: nameOf(a.member),
+    swapped: a.swapped,
+    ...(a.swapped ? { originallyScheduled: nameOf(a.originalMember) } : {}),
+  };
+}));
+
+ai.get('/duty-schedule', aiRoute(async (req) => {
+  const days = clampInt(req.query.days, 1, 60, 14);
+  const preview = await getSchedulePreview(days);
+  return preview.map((d) => ({
+    date: d.date,
+    weekday: weekdayOf(d.date),
+    member: nameOf(d.member),
+    ...(d.swapped ? { swapped: true, originallyScheduled: nameOf(d.originalMember) } : {}),
+  }));
+}));
+
+ai.get('/member-duty-days', aiRoute(async (req) => {
+  const currentYear = Number(todayInMasjidTimezone().slice(0, 4));
+  const year = clampInt(req.query.year, 2000, 2100, currentYear);
+  const data = await getYearlySchedule(year);
+  const monthNames = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2000, i, 1)).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }));
+  return {
+    year,
+    members: data.members.filter(matches(req.query.search)).map((m) => ({
+      id: m.unique_id,
+      name: m.name,
+      // { "January": [3, 21], ... } - only months with duty days; swaps noted
+      dutyDays: Object.fromEntries(
+        m.months
+          .map((days, i) => [monthNames[i], days.map((d) => (d.swapped ? `${d.day} (swapped ${d.swapped === 'in' ? 'in for' : 'away to'} ${d.otherMemberName})` : d.day))])
+          .filter(([, days]) => days.length)
+      ),
+    })),
+  };
+}));
+
+ai.get('/members', aiRoute(async (req) => {
+  const members = await dbAll('SELECT * FROM members ORDER BY position ASC');
+  return members.filter(matches(req.query.search)).map((m) => ({
+    id: m.unique_id,
+    name: m.name,
+    people: m.member_count,
+    inFoodRotation: m.member_type === 'regular',
+    active: m.active,
+    paymentPlan: m.payment_amount != null && m.payment_frequency ? { amount: Number(m.payment_amount), frequency: m.payment_frequency } : null,
+  }));
+}));
+
+ai.get('/pending-dues', aiRoute(async () => {
+  const pending = await getPendingDuesMembers();
+  return pending.map((p) => ({
+    id: p.unique_id,
+    name: p.name,
+    paymentFrequency: p.payment_frequency,
+    due: p.due,
+    ...(p.missedMonths?.length ? { missedMonths: p.missedMonths } : {}),
+  }));
+}));
+
+// The same date-range rule as the app's own summary (dateRangeClause): both
+// sides cast to date, since stored dates may be YYYY-MM-DD or full timestamps.
+function aiDateRange(req) {
+  for (const key of ['startDate', 'endDate']) {
+    if (req.query[key] !== undefined && !isDateStr(req.query[key])) throw badRequest(`${key} must be YYYY-MM-DD`);
+  }
+  return dateRangeClause(req);
+}
+
+ai.get('/finance-summary', aiRoute(async (req) => {
+  const { clause, params } = aiDateRange(req);
+  const totals = await dbAll(`SELECT type, SUM(amount) AS total FROM transactions ${clause} GROUP BY type`, params);
+  const byCategory = await dbAll(
+    `SELECT type, category, COUNT(*) AS count, SUM(amount) AS total FROM transactions ${clause} GROUP BY type, category ORDER BY type, total DESC`,
+    params
+  );
+  const banks = await dbAll(`
+    SELECT b.name,
+      b.opening_balance
+        + COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0)
+        - COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS balance
+    FROM banks b LEFT JOIN transactions t ON t.bank_id = b.id
+    GROUP BY b.id ORDER BY b.created_at ASC
+  `);
+  const total = (type) => Number(totals.find((t) => t.type === type)?.total ?? 0);
+  return {
+    period: { from: req.query.startDate ?? 'all time', to: req.query.endDate ?? 'today' },
+    totalIncome: total('income'),
+    totalExpense: total('expense'),
+    balance: total('income') - total('expense'),
+    byCategory: byCategory.map((c) => ({ type: c.type, category: c.category, count: Number(c.count), total: Number(c.total) })),
+    bankBalancesNow: banks.map((b) => ({ bank: b.name, balance: Number(b.balance) })),
+  };
+}));
+
+ai.get('/transactions', aiRoute(async (req) => {
+  const { clause, params } = aiDateRange(req);
+  const where = [clause.replace(/^WHERE /, '').replace(/\bdate::date\b/g, 't.date::date')].filter(Boolean);
+  if (req.query.type !== undefined) {
+    if (!['income', 'expense'].includes(req.query.type)) throw badRequest('type must be income or expense');
+    params.push(req.query.type);
+    where.push(`t.type = $${params.length}`);
+  }
+  if (req.query.search) {
+    params.push(`%${String(req.query.search).trim()}%`);
+    where.push(`(t.category ILIKE $${params.length} OR t.description ILIKE $${params.length} OR m.name ILIKE $${params.length})`);
+  }
+  params.push(clampInt(req.query.limit, 1, 100, 30));
+  const rows = await dbAll(
+    `SELECT t.date, t.type, t.category, t.amount, t.description, m.name AS member, b.name AS bank
+     FROM transactions t
+     LEFT JOIN members m ON m.id = t.member_id
+     LEFT JOIN banks b ON b.id = t.bank_id
+     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+     ORDER BY t.date::date DESC, t.created_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+  return rows.map((t) => ({
+    date: String(t.date).slice(0, 10),
+    type: t.type,
+    category: t.category,
+    amount: Number(t.amount),
+    ...(t.description ? { description: t.description } : {}),
+    ...(t.member ? { member: t.member } : {}),
+    ...(t.bank ? { bank: t.bank } : {}),
+  }));
+}));
+
+ai.get('/announcements', aiRoute(async (req) => {
+  const rows = await dbAll('SELECT title, message, created_at FROM announcements ORDER BY created_at DESC LIMIT $1', [clampInt(req.query.limit, 1, 50, 10)]);
+  // The masjid's day, like every other date here - not the UTC day.
+  return rows.map((a) => ({ date: todayFormatter.format(new Date(a.created_at)), title: a.title, message: a.message }));
+}));
+
+app.use('/api/ai', ai);
+
 app.get('/health', (req, res) => {
   res.json({ status: 'API is running' });
 });
