@@ -2763,6 +2763,10 @@ const aiRoute = (fn) => async (req, res) => {
   }
 };
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
+// Every amount here is in rupees - said once per response. With bare numbers
+// ("due": 2100) the AI answered in dollars.
+const AMOUNTS_IN = 'INR (Indian rupees, ₹)';
+const inRupees = (data) => (Array.isArray(data) ? { amountsIn: AMOUNTS_IN, items: data } : { amountsIn: AMOUNTS_IN, ...data });
 
 ai.get('/openapi.json', (req, res) => res.json(AI_OPENAPI));
 
@@ -2829,7 +2833,7 @@ ai.get('/member-duty-days', aiRoute(async (req) => {
 ai.get('/members', aiRoute(async (req) => {
   const members = await dbAll('SELECT * FROM members ORDER BY position ASC');
   const maySeePlan = (m) => req.aiUser.isAdmin || m.id === req.aiUser.memberId;
-  return members.filter(matches(req.query.search)).map((m) => ({
+  return inRupees(members.filter(matches(req.query.search)).map((m) => ({
     id: m.unique_id,
     name: m.name,
     people: m.member_count,
@@ -2837,7 +2841,7 @@ ai.get('/members', aiRoute(async (req) => {
     active: m.active,
     // Another member's payment plan is the admin's to see.
     ...(maySeePlan(m) ? { paymentPlan: m.payment_amount != null && m.payment_frequency ? { amount: Number(m.payment_amount), frequency: m.payment_frequency } : null } : {}),
-  }));
+  })));
 }));
 
 // Who is asking: "my dues", "my next duty" - the member's own record, or the admin.
@@ -2848,7 +2852,7 @@ ai.get('/me', aiRoute(async (req) => {
   if (!m) return { role: 'member', note: 'Member record not found' };
   const dueInfo = await computeMemberDueInfo(m, getMasjidTodayParts());
   const schedule = await getSchedulePreview(60);
-  return {
+  return inRupees({
     role: req.aiUser.isAdmin ? 'admin' : 'member',
     id: m.unique_id,
     name: m.name,
@@ -2857,7 +2861,7 @@ ai.get('/me', aiRoute(async (req) => {
     paymentPlan: m.payment_amount != null && m.payment_frequency ? { amount: Number(m.payment_amount), frequency: m.payment_frequency } : null,
     dues: dueInfo.hasPlan ? { due: Math.max(Number(dueInfo.due) || 0, 0), ...(dueInfo.missedMonths?.length ? { missedMonths: dueInfo.missedMonths } : {}) } : null,
     nextDutyDays: schedule.filter((d) => d.member?.id === m.id).slice(0, 5).map((d) => ({ date: d.date, weekday: weekdayOf(d.date) })),
-  };
+  });
 }));
 
 // The admin: everyone who owes. A member: only themselves - and the answer
@@ -2878,7 +2882,7 @@ ai.get('/pending-dues', aiRoute(async (req) => {
     due: p.due,
     ...(p.missedMonths?.length ? { missedMonths: p.missedMonths } : {}),
   }));
-  return req.aiUser.isAdmin ? rows : { scope: ONLY_YOURS('dues'), pending: rows };
+  return inRupees(req.aiUser.isAdmin ? rows : { scope: ONLY_YOURS('dues'), pending: rows });
 }));
 
 // The same date-range rule as the app's own summary (dateRangeClause): both
@@ -2907,14 +2911,14 @@ ai.get('/finance-summary', aiRoute(async (req) => {
     GROUP BY b.id ORDER BY b.created_at ASC
   `);
   const total = (type) => Number(totals.find((t) => t.type === type)?.total ?? 0);
-  return {
+  return inRupees({
     period: { from: req.query.startDate ?? 'all time', to: req.query.endDate ?? 'today' },
     totalIncome: total('income'),
     totalExpense: total('expense'),
     balance: total('income') - total('expense'),
     byCategory: byCategory.map((c) => ({ type: c.type, category: c.category, count: Number(c.count), total: Number(c.total) })),
     bankBalancesNow: banks.map((b) => ({ bank: b.name, balance: Number(b.balance) })),
-  };
+  });
 }));
 
 ai.get('/transactions', aiRoute(async (req) => {
@@ -2955,7 +2959,7 @@ ai.get('/transactions', aiRoute(async (req) => {
     ...(t.member ? { member: t.member } : {}),
     ...(t.bank ? { bank: t.bank } : {}),
   }));
-  return req.aiUser.isAdmin ? list : { scope: ONLY_YOURS('payments and transactions'), transactions: list };
+  return inRupees(req.aiUser.isAdmin ? list : { scope: ONLY_YOURS('payments and transactions'), transactions: list });
 }));
 
 ai.get('/announcements', aiRoute(async (req) => {

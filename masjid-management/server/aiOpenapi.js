@@ -11,7 +11,7 @@ export const AI_OPENAPI = {
     title: 'Masjid Rahma - read-only API for the AI assistant',
     version: '1.0.0',
     description:
-      'Food-duty rotation (each day one member household supplies food), members, dues, ' +
+      'Food-duty rotation (each day one member household supplies food), members, dues (amounts in Indian rupees, ₹), ' +
       'income/expense transactions, bank balances and announcements. Dates are in Asia/Kolkata. ' +
       'Answers follow the asking user: the admin sees everything; a member sees the schedule, announcements, ' +
       'members, and only their own dues and payments; a visitor who is not logged in only the food-duty schedule.',

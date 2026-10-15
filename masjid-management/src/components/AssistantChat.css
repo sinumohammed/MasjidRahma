@@ -416,3 +416,22 @@
   padding-top: 6px;
   padding-bottom: 6px;
 }
+
+.assistant-rec-hint {
+  color: var(--a-muted);
+  font-size: 13px;
+}
+
+.assistant-auto-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  cursor: pointer;
+}
+
+.assistant-sources-label {
+  font-size: 11px;
+  color: var(--a-muted);
+  align-self: center;
+}

@@ -7,9 +7,18 @@ import { transcribeAssistant } from '../services/api';
 // (Gemini, Whisper as backup) handles Malayalam and other languages; a
 // language hint helps it, "auto" lets it detect. A recording that never got
 // loud is not sent - speech-to-text writes words for silence.
+// With `autoStop`, the recording ends by itself: after the speaker has said
+// something and then paused for SILENCE_MS, or after NO_SPEECH_MS if nothing
+// was said at all - so there is no need to tap again to stop.
 
 const MAX_SECONDS = 120; // the server accepts 4 MB; two minutes of Opus is ~1 MB
 const MIN_PEAK = 0.04;
+// Loudness (0-1) that counts as speaking, and as quiet. Between the two
+// nothing changes, so breathing or a fan does not end a sentence.
+const SPEECH_LEVEL = 0.07;
+const QUIET_LEVEL = 0.035;
+const SILENCE_MS = 1500;
+const NO_SPEECH_MS = 8000;
 const TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
 
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing';
@@ -35,12 +44,22 @@ interface Recording {
   timer?: number;
 }
 
-export function useVoiceRecorder({ onText, onError, language }: { onText: (text: string) => void; onError: (message: string) => void; language: string }) {
+export function useVoiceRecorder({
+  onText,
+  onError,
+  language,
+  autoStop = true,
+}: {
+  onText: (text: string) => void;
+  onError: (message: string) => void;
+  language: string;
+  autoStop?: boolean;
+}) {
   const [status, setStatus] = useState<VoiceStatus>('idle');
   const [seconds, setSeconds] = useState(0);
   const rec = useRef<Recording | null>(null);
-  const callbacks = useRef({ onText, onError, language });
-  callbacks.current = { onText, onError, language };
+  const callbacks = useRef({ onText, onError, language, autoStop });
+  callbacks.current = { onText, onError, language, autoStop };
 
   const release = () => {
     const r = rec.current;
@@ -101,12 +120,25 @@ export function useVoiceRecorder({ onText, onError, language }: { onText: (text:
       analyser.fftSize = 512;
       r.audioCtx.createMediaStreamSource(stream).connect(analyser);
       const data = new Uint8Array(analyser.fftSize);
-      const tick = () => {
+      const startedAt = performance.now();
+      let spoke = false;
+      let lastLoud = startedAt;
+      const tick = (now: number) => {
         r.raf = requestAnimationFrame(tick);
         analyser.getByteTimeDomainData(data);
         let sum = 0;
         for (const v of data) sum += (v - 128) ** 2;
-        r.peak = Math.max(r.peak ?? 0, Math.min(1, Math.sqrt(sum / data.length) / 40));
+        const level = Math.min(1, Math.sqrt(sum / data.length) / 40);
+        r.peak = Math.max(r.peak ?? 0, level);
+        if (!callbacks.current.autoStop) return;
+        if (level >= SPEECH_LEVEL) {
+          spoke = true;
+          lastLoud = now;
+        } else if (level >= QUIET_LEVEL) {
+          lastLoud = now; // still sounding - not a pause yet
+        }
+        // A pause after speaking ends the question; silence from the start ends it too.
+        if ((spoke && now - lastLoud > SILENCE_MS) || (!spoke && now - startedAt > NO_SPEECH_MS)) stop();
       };
       r.raf = requestAnimationFrame(tick);
     } catch {

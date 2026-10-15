@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Input, Button, Alert, Tag, Typography, Popconfirm, Select, Tooltip, message } from 'antd';
+import { Input, Button, Alert, Tag, Typography, Popconfirm, Select, Switch, Tooltip, message } from 'antd';
 import { RobotOutlined, SendOutlined, ClearOutlined, AudioOutlined, CheckOutlined, CloseOutlined, HistoryOutlined } from '@ant-design/icons';
 import {
   askAssistant,
@@ -36,6 +36,7 @@ interface ChatMessage {
 const MAX_KEPT = 40;
 const MAX_RECENT = 6;
 const VOICE_LANGUAGE_KEY = 'masjid_assistant_voice_language';
+const AUTO_SEND_KEY = 'masjid_assistant_voice_auto_send';
 // Shown in its own script, so each speaker finds theirs.
 const VOICE_LANGUAGES = [
   { value: 'auto', label: 'Any language' },
@@ -101,6 +102,16 @@ function rememberQuestion(user: string | null, recent: string[], q: string): str
   }
   return next;
 }
+// Spoken questions are sent as soon as they are written out, unless the user
+// turned that off to check the words first (a misheard question still counts).
+function loadAutoSend(): boolean {
+  try {
+    return window.localStorage.getItem(AUTO_SEND_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
 function loadVoiceLanguage(): string {
   try {
     return window.localStorage.getItem(VOICE_LANGUAGE_KEY) || 'auto';
@@ -110,8 +121,11 @@ function loadVoiceLanguage(): string {
 }
 
 // "**bold**" -> <strong>; lines starting with "- " or "1. " keep their own line.
+// The AI marks each fact with its source number ("... today [1]."); here the
+// source is shown once under the answer instead ("From: Masjid records"), so
+// the numbers are left out of the text.
 function formatAnswer(text: string): ReactNode[] {
-  return text.split('\n').map((line, i) => {
+  return text.replace(/\s*(\[\d+\]|【\d+】)/g, '').split('\n').map((line, i) => {
     const parts = line.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
       part.startsWith('**') && part.endsWith('**') ? <strong key={j}>{part.slice(2, -2)}</strong> : part
     );
@@ -142,6 +156,7 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
   const [quota, setQuota] = useState<AssistantQuota | null>(null);
   const [askingAs, setAskingAs] = useState<AssistantStatus['askingAs']>();
   const [voiceLanguage, setVoiceLanguage] = useState(loadVoiceLanguage);
+  const [autoSend, setAutoSend] = useState(loadAutoSend);
   const shellRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const noneLeft = quota?.remaining === 0;
@@ -150,9 +165,14 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
   // 200 px at the least: with the keyboard open a phone has about that much.
   const fitHeight = useFitToViewport(shellRef, { bottomGap: embedded ? 0 : 16, min: 200 });
 
+  // The recording stops by itself when the speaker pauses; with auto-send the
+  // words go straight out as the question (shown as the user's bubble).
   const voice = useVoiceRecorder({
     language: voiceLanguage,
-    onText: (text) => setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text)),
+    onText: (text) => {
+      if (autoSend && !draft.trim()) ask(text);
+      else setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text));
+    },
     onError: (msg) => message.warning(msg),
   });
 
@@ -324,9 +344,10 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
                 {m.error ? <Alert type="warning" showIcon message={m.text} /> : formatAnswer(m.text)}
                 {m.sources && m.sources.length > 0 && (
                   <div className="assistant-sources">
-                    {m.sources.map((s) => (
-                      <Tag key={`${s.n}-${s.source}`} className="assistant-source" bordered={false}>
-                        [{s.n}] {sourceLabel(s)}
+                    <span className="assistant-sources-label">From:</span>
+                    {[...new Set(m.sources.map(sourceLabel))].map((label) => (
+                      <Tag key={label} className="assistant-source" bordered={false}>
+                        {label}
                       </Tag>
                     ))}
                   </div>
@@ -375,6 +396,7 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
               <span className="assistant-rec-dot" aria-hidden />
               <span className="assistant-rec-time">
                 Listening… {Math.floor(voice.seconds / 60)}:{String(voice.seconds % 60).padStart(2, '0')}
+                <span className="assistant-rec-hint"> · pause to finish</span>
               </span>
               <Button type="text" shape="circle" icon={<CloseOutlined />} onClick={voice.cancel} aria-label="Cancel recording" />
               <Button type="primary" shape="circle" icon={<CheckOutlined />} onClick={voice.stop} aria-label="Done speaking" />
@@ -424,6 +446,22 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
         </div>
         {showVoice && (
           <div className="assistant-meta">
+            <label className="assistant-auto-send">
+              <Switch
+                size="small"
+                checked={autoSend}
+                onChange={(on) => {
+                  setAutoSend(on);
+                  try {
+                    window.localStorage.setItem(AUTO_SEND_KEY, on ? 'on' : 'off');
+                  } catch {
+                    // not kept
+                  }
+                }}
+                aria-label="Send spoken questions automatically"
+              />
+              <span>Auto-send</span>
+            </label>
             <span>Voice</span>
             <Select
               size="small"
