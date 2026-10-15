@@ -270,6 +270,18 @@ async function initializeDatabase() {
   // POST/PUT /api/transactions).
   await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS bank_id TEXT REFERENCES banks(id)`);
 
+  // Assistant questions per user per day (the masjid's day) - the daily
+  // limit survives restarts and Render's free-tier sleep. user_key is the
+  // user id, or "ip:<address>" for a visitor who is not logged in.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS assistant_usage (
+      user_key TEXT NOT NULL,
+      day TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_key, day)
+    )
+  `);
+
   console.log('Database tables ready');
   await backfillMemberUsers();
   await seedDefaultContacts();
@@ -2943,26 +2955,63 @@ app.use('/api/ai', ai);
 // Unset AI_ASK_URL or AI_ASK_KEY: 503, and the app hides the chat.
 // Not logged in: a guest - asked only about the app's data (agent
 // connected_apps, so the chat is not a general chatbot for anyone), only the
-// duty schedule (AI_GUEST_PATHS), and at most AI_GUEST_PER_HOUR questions an
-// hour per IP address, since every question spends the AI service's quota.
+// duty schedule (AI_GUEST_PATHS).
+// Every question spends the AI service's free quota, so each user has a
+// daily limit (the masjid's day): AI_DAILY_LIMIT_MEMBER for members (10),
+// AI_DAILY_LIMIT_GUEST per IP address for visitors (10), AI_DAILY_LIMIT_ADMIN
+// for the admin (0 = no limit). Counted in Postgres (assistant_usage); a
+// question the AI could not answer is given back.
 const AI_ASK_URL = process.env.AI_ASK_URL;
 const AI_ASK_KEY = process.env.AI_ASK_KEY;
 const CHAT_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const conversationFor = (req, chatId) => (req.user ? `u-${req.user.id}-${chatId}` : `g-${chatId}`).slice(0, 100);
-const AI_GUEST_PER_HOUR = Number(process.env.AI_GUEST_PER_HOUR || 20);
-const guestAsked = new Map(); // ip -> { hour, count }; one process on Render
+const limitSetting = (name, fallback) => {
+  const n = Number(process.env[name] ?? fallback);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+};
+const AI_DAILY_LIMIT = {
+  admin: limitSetting('AI_DAILY_LIMIT_ADMIN', 0),
+  member: limitSetting('AI_DAILY_LIMIT_MEMBER', 10),
+  guest: limitSetting('AI_DAILY_LIMIT_GUEST', 10),
+};
+const assistantAvailable = () => Boolean(AI_ASK_URL && AI_ASK_KEY && MASJID_AI_TOKEN);
 
-function guestOverLimit(ip) {
-  const hour = Math.floor(Date.now() / 3600000);
-  if (guestAsked.size > 5000) guestAsked.clear();
-  const entry = guestAsked.get(ip);
-  const count = entry && entry.hour === hour ? entry.count + 1 : 1;
-  guestAsked.set(ip, { hour, count });
-  return count > AI_GUEST_PER_HOUR;
+// Who is counted, and their limit (null = no limit).
+function usageFor(req) {
+  const role = !req.user ? 'guest' : req.user.isAdmin ? 'admin' : 'member';
+  return { key: req.user ? String(req.user.id) : `ip:${req.ip}`, limit: AI_DAILY_LIMIT[role] || null };
 }
 
-app.get('/api/assistant/status', optionalAuth, (req, res) => {
-  res.json({ available: Boolean(AI_ASK_URL && AI_ASK_KEY && MASJID_AI_TOKEN) });
+async function usedToday(usage) {
+  const row = await dbGet('SELECT count FROM assistant_usage WHERE user_key = $1 AND day = $2', [usage.key, todayInMasjidTimezone()]);
+  return row?.count ?? 0;
+}
+// One question more, if it is within the limit - in one statement, so two
+// questions sent at once cannot both take the last one. Returns the new
+// count, or null when the limit is reached.
+async function takeQuestion(usage) {
+  const row = await dbGet(
+    `INSERT INTO assistant_usage (user_key, day, count) VALUES ($1, $2, 1)
+     ON CONFLICT (user_key, day) DO UPDATE SET count = assistant_usage.count + 1
+     WHERE $3::int IS NULL OR assistant_usage.count < $3::int
+     RETURNING count`,
+    [usage.key, todayInMasjidTimezone(), usage.limit]
+  );
+  return row ? row.count : null;
+}
+async function giveQuestionBack(usage) {
+  await dbRun('UPDATE assistant_usage SET count = GREATEST(count - 1, 0) WHERE user_key = $1 AND day = $2', [usage.key, todayInMasjidTimezone()]);
+}
+const remainingOf = (usage, used) => (usage.limit ? { limit: usage.limit, remaining: Math.max(usage.limit - used, 0) } : { limit: null, remaining: null });
+
+app.get('/api/assistant/status', optionalAuth, async (req, res) => {
+  if (!assistantAvailable()) return res.json({ available: false });
+  const usage = usageFor(req);
+  try {
+    res.json({ available: true, ...remainingOf(usage, await usedToday(usage)) });
+  } catch {
+    res.json({ available: true, limit: usage.limit, remaining: null });
+  }
 });
 
 app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
@@ -2974,10 +3023,25 @@ app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
   // A guest's conversation is known only by its id: the app sends a random
   // one per browser, so two guests never share one ("main" would).
   if (!req.user && chatId.length < 16) return res.status(400).json({ error: 'A guest chat needs a random chatId of 16+ characters' });
-  if (!req.user && guestOverLimit(req.ip)) {
-    return res.status(429).json({ error: 'Too many questions for now - log in, or try again in an hour' });
+  const usage = usageFor(req);
+  let used;
+  try {
+    used = await takeQuestion(usage);
+  } catch (error) {
+    return res.status(500).json({ error: 'Could not check today\'s question count - please try again' });
+  }
+  if (used === null) {
+    return res.status(429).json({
+      error: `You have used today's ${usage.limit} questions - ${req.user ? 'more tomorrow' : 'log in, or ask again tomorrow'}`,
+      limit: usage.limit,
+      remaining: 0,
+    });
   }
   const mode = req.user ? { mode: 'single' } : { mode: 'multi', agent: 'connected_apps' };
+  const giveBack = async (status, body) => {
+    await giveQuestionBack(usage).catch(() => {});
+    res.status(status).json({ ...body, ...remainingOf(usage, used - 1) });
+  };
   try {
     const aiRes = await fetch(AI_ASK_URL, {
       method: 'POST',
@@ -2987,10 +3051,38 @@ app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
       signal: AbortSignal.timeout(120000),
     });
     const data = await aiRes.json().catch(() => ({}));
-    if (!aiRes.ok) return res.status(aiRes.status === 429 ? 429 : 502).json({ error: data.error ?? 'The assistant could not answer - please try again' });
-    res.json({ answer: data.answer, sources: (data.sources ?? []).map((s) => ({ n: s.n, source: s.source, section: s.section })) });
+    if (!aiRes.ok) return giveBack(aiRes.status === 429 ? 429 : 502, { error: data.error ?? 'The assistant could not answer - please try again' });
+    res.json({ answer: data.answer, sources: (data.sources ?? []).map((s) => ({ n: s.n, source: s.source, section: s.section })), ...remainingOf(usage, used) });
   } catch (error) {
-    res.status(502).json({ error: error.name === 'TimeoutError' ? 'The assistant took too long - please try again' : 'The assistant could not be reached' });
+    await giveBack(502, { error: error.name === 'TimeoutError' ? 'The assistant took too long - please try again' : 'The assistant could not be reached' });
+  }
+});
+
+// Voice input: the recording (raw body, up to 4 MB - about 2 minutes) goes
+// to the AI service's speech-to-text; the text comes back to check before
+// sending. Not counted as a question, but only for someone with questions
+// left today, since it spends the same free quota.
+const VOICE_LANGUAGES = new Set(['English', 'Malayalam', 'Hindi', 'Tamil', 'Kannada', 'Telugu', 'Arabic', 'Urdu']);
+app.post('/api/assistant/transcribe', optionalAuth, express.raw({ type: () => true, limit: '4mb' }), async (req, res) => {
+  if (!assistantAvailable()) return res.status(503).json({ error: 'The assistant is not set up on this server' });
+  const usage = usageFor(req);
+  if (usage.limit && (await usedToday(usage)) >= usage.limit) {
+    return res.status(429).json({ error: `You have used today's ${usage.limit} questions`, limit: usage.limit, remaining: 0 });
+  }
+  if (!req.body?.length) return res.status(400).json({ error: 'No recording received' });
+  const lang = VOICE_LANGUAGES.has(req.query.lang) ? `?lang=${encodeURIComponent(req.query.lang)}` : '';
+  try {
+    const aiRes = await fetch(`${AI_ASK_URL.replace(/\/$/, '')}/transcribe${lang}`, {
+      method: 'POST',
+      headers: { 'Content-Type': req.get('content-type') || 'audio/webm', Authorization: `Bearer ${AI_ASK_KEY}` },
+      body: req.body,
+      signal: AbortSignal.timeout(60000),
+    });
+    const data = await aiRes.json().catch(() => ({}));
+    if (!aiRes.ok) return res.status(aiRes.status === 429 ? 429 : 502).json({ error: data.error ?? 'Could not turn the recording into text' });
+    res.json({ text: data.text ?? '', language: data.language ?? null });
+  } catch (error) {
+    res.status(502).json({ error: error.name === 'TimeoutError' ? 'Turning the recording into text took too long' : 'The assistant could not be reached' });
   }
 });
 

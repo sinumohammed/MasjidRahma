@@ -18,9 +18,12 @@
   gap: 8px;
 }
 
-.assistant-messages {
-  /* The app's cards centre their text; a chat reads left to right. */
+/* The app's cards centre their text; a chat reads left to right. */
+.assistant-card .ant-card-body {
   text-align: left;
+}
+
+.assistant-messages {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -128,4 +131,91 @@
   display: flex;
   justify-content: flex-end;
   margin-bottom: 4px;
+}
+
+/* Today's question count and the clear button, side by side. */
+.assistant-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assistant-quota {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.assistant-chip-label {
+  display: block;
+  margin: 4px 0 6px;
+  font-size: 13px;
+}
+
+.assistant-recent {
+  border-style: dashed;
+}
+
+/* While chatting: recent questions in one scrollable line, never wider than the screen. */
+.assistant-recent-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.assistant-recent-row .assistant-suggestion {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.assistant-recent-icon {
+  opacity: 0.6;
+  flex: 0 0 auto;
+}
+
+.assistant-limit {
+  margin-top: 8px;
+}
+
+.assistant-recording {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.assistant-rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  animation: assistant-pulse 1s ease-in-out infinite;
+}
+
+.assistant-rec-time {
+  flex: 1;
+  min-width: 0;
+}
+
+@keyframes assistant-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.assistant-voice-language {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+@media (max-width: 480px) {
+  /* On a phone the count is short: "7/10 left" would be clearer than wrapping. */
+  .assistant-quota {
+    font-size: 11px;
+    padding: 0 6px;
+  }
 }

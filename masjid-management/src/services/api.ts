@@ -786,12 +786,34 @@ export interface AssistantSource {
   section?: string;
 }
 
-export interface AssistantAnswer {
+// limit/remaining: today's questions (null = no limit, e.g. the admin).
+export interface AssistantQuota {
+  limit: number | null;
+  remaining: number | null;
+}
+
+export interface AssistantAnswer extends AssistantQuota {
   answer: string;
   sources: AssistantSource[];
 }
 
-export const getAssistantStatus = async (): Promise<{ available: boolean }> => {
+export interface AssistantStatus extends Partial<AssistantQuota> {
+  available: boolean;
+}
+
+// An assistant error that still says how many questions are left.
+export class AssistantError extends Error {
+  quota?: AssistantQuota;
+  constructor(message: string, quota?: AssistantQuota) {
+    super(message);
+    this.quota = quota;
+  }
+}
+
+const quotaOf = (r: { limit?: number | null; remaining?: number | null }): AssistantQuota | undefined =>
+  r && 'limit' in r ? { limit: r.limit ?? null, remaining: r.remaining ?? null } : undefined;
+
+export const getAssistantStatus = async (): Promise<AssistantStatus> => {
   const response = await apiFetch(`${API_BASE_URL}/assistant/status`, {
     headers: { ...authHeaders() },
   });
@@ -806,8 +828,21 @@ export const askAssistant = async (question: string, chatId: string): Promise<As
     body: JSON.stringify({ question, chatId }),
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'The assistant could not answer - please try again');
+  if (!response.ok) throw new AssistantError(result.error || 'The assistant could not answer - please try again', quotaOf(result));
   return result;
+};
+
+// Voice input: the recording -> text in the box, to check before sending.
+// `language`: a hint such as "Malayalam"; leave out to detect it.
+export const transcribeAssistant = async (audio: Blob, language?: string): Promise<string> => {
+  const response = await apiFetch(`${API_BASE_URL}/assistant/transcribe${language ? `?lang=${encodeURIComponent(language)}` : ''}`, {
+    method: 'POST',
+    headers: { 'Content-Type': audio.type || 'audio/webm', ...authHeaders() },
+    body: audio,
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new AssistantError(result.error || 'Could not turn the recording into text', quotaOf(result));
+  return result.text ?? '';
 };
 
 export const clearAssistantChat = async (chatId: string): Promise<void> => {
