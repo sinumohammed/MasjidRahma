@@ -282,6 +282,16 @@ async function initializeDatabase() {
     )
   `);
 
+  // Settings the admin changes in the app (Settings page) - today only the
+  // Assistant's daily question limits. key -> value as text.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   console.log('Database tables ready');
   await backfillMemberUsers();
   await seedDefaultContacts();
@@ -2967,9 +2977,10 @@ app.use('/api/ai', ai);
 // connected_apps, so the chat is not a general chatbot for anyone), only the
 // duty schedule (AI_GUEST_PATHS).
 // Every question spends the AI service's free quota, so each user has a
-// daily limit (the masjid's day): AI_DAILY_LIMIT_MEMBER for members (10),
-// AI_DAILY_LIMIT_GUEST per IP address for visitors (10), AI_DAILY_LIMIT_ADMIN
-// for the admin (0 = no limit). Counted in Postgres (assistant_usage); a
+// daily limit (the masjid's day): members 4, visitors 4 per IP address, the
+// admin no limit (0). The admin changes them on the Settings page (stored in
+// app_settings, used at once); AI_DAILY_LIMIT_MEMBER / _GUEST / _ADMIN are
+// only the defaults before that. Counted in Postgres (assistant_usage); a
 // question the AI could not answer is given back.
 const AI_ASK_URL = process.env.AI_ASK_URL;
 const AI_ASK_KEY = process.env.AI_ASK_KEY;
@@ -2979,18 +2990,64 @@ const limitSetting = (name, fallback) => {
   const n = Number(process.env[name] ?? fallback);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
 };
-const AI_DAILY_LIMIT = {
+const DEFAULT_DAILY_LIMIT = {
   admin: limitSetting('AI_DAILY_LIMIT_ADMIN', 0),
-  member: limitSetting('AI_DAILY_LIMIT_MEMBER', 10),
-  guest: limitSetting('AI_DAILY_LIMIT_GUEST', 10),
+  member: limitSetting('AI_DAILY_LIMIT_MEMBER', 4),
+  guest: limitSetting('AI_DAILY_LIMIT_GUEST', 4),
 };
+const LIMIT_ROLES = ['member', 'guest', 'admin'];
+const MAX_DAILY_LIMIT = 100;
 const assistantAvailable = () => Boolean(AI_ASK_URL && AI_ASK_KEY && MASJID_AI_TOKEN);
 
-// Who is counted, and their limit (null = no limit).
-function usageFor(req) {
-  const role = !req.user ? 'guest' : req.user.isAdmin ? 'admin' : 'member';
-  return { key: req.user ? String(req.user.id) : `ip:${req.ip}`, limit: AI_DAILY_LIMIT[role] || null };
+// The limits now: the admin's setting for a role, else its default.
+async function dailyLimits() {
+  const rows = await dbAll("SELECT key, value FROM app_settings WHERE key LIKE 'assistant.daily_limit.%'");
+  const limits = { ...DEFAULT_DAILY_LIMIT };
+  for (const { key, value } of rows) {
+    const role = key.slice('assistant.daily_limit.'.length);
+    const n = Number(value);
+    if (LIMIT_ROLES.includes(role) && Number.isInteger(n) && n >= 0) limits[role] = n;
+  }
+  return limits;
 }
+
+// Who is counted, and their limit (null = no limit).
+async function usageFor(req) {
+  const role = !req.user ? 'guest' : req.user.isAdmin ? 'admin' : 'member';
+  const limits = await dailyLimits().catch(() => DEFAULT_DAILY_LIMIT);
+  return { key: req.user ? String(req.user.id) : `ip:${req.ip}`, limit: limits[role] || null };
+}
+
+// The admin's Settings page: read and change the limits (0 = no limit).
+app.get('/api/admin/assistant-settings', requireAdmin, async (req, res) => {
+  try {
+    res.json({ dailyLimits: await dailyLimits(), defaults: DEFAULT_DAILY_LIMIT, max: MAX_DAILY_LIMIT });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/assistant-settings', requireAdmin, async (req, res) => {
+  const given = req.body?.dailyLimits ?? {};
+  for (const role of Object.keys(given)) {
+    const n = given[role];
+    if (!LIMIT_ROLES.includes(role) || !Number.isInteger(n) || n < 0 || n > MAX_DAILY_LIMIT) {
+      return res.status(400).json({ error: `dailyLimits.${role}: a whole number from 0 (no limit) to ${MAX_DAILY_LIMIT}` });
+    }
+  }
+  try {
+    for (const [role, n] of Object.entries(given)) {
+      await dbRun(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+        [`assistant.daily_limit.${role}`, String(n)]
+      );
+    }
+    res.json({ dailyLimits: await dailyLimits() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 async function usedToday(usage) {
   const row = await dbGet('SELECT count FROM assistant_usage WHERE user_key = $1 AND day = $2', [usage.key, todayInMasjidTimezone()]);
@@ -3018,7 +3075,7 @@ const remainingOf = (usage, used) => (usage.limit ? { limit: usage.limit, remain
 // member's view ("only my dues") is never mistaken for the admin's.
 app.get('/api/assistant/status', optionalAuth, async (req, res) => {
   if (!assistantAvailable()) return res.json({ available: false });
-  const usage = usageFor(req);
+  const usage = await usageFor(req);
   const askingAs = !req.user ? { role: 'guest' } : { role: req.user.isAdmin ? 'admin' : 'member', username: req.user.username };
   try {
     res.json({ available: true, askingAs, ...remainingOf(usage, await usedToday(usage)) });
@@ -3036,7 +3093,7 @@ app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
   // A guest's conversation is known only by its id: the app sends a random
   // one per browser, so two guests never share one ("main" would).
   if (!req.user && chatId.length < 16) return res.status(400).json({ error: 'A guest chat needs a random chatId of 16+ characters' });
-  const usage = usageFor(req);
+  const usage = await usageFor(req);
   let used;
   try {
     used = await takeQuestion(usage);
@@ -3078,7 +3135,7 @@ app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
 const VOICE_LANGUAGES = new Set(['English', 'Malayalam', 'Hindi', 'Tamil', 'Kannada', 'Telugu', 'Arabic', 'Urdu']);
 app.post('/api/assistant/transcribe', optionalAuth, express.raw({ type: () => true, limit: '4mb' }), async (req, res) => {
   if (!assistantAvailable()) return res.status(503).json({ error: 'The assistant is not set up on this server' });
-  const usage = usageFor(req);
+  const usage = await usageFor(req);
   if (usage.limit && (await usedToday(usage)) >= usage.limit) {
     return res.status(429).json({ error: `You have used today's ${usage.limit} questions`, limit: usage.limit, remaining: 0 });
   }

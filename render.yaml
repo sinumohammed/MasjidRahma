@@ -27,8 +27,8 @@ services:
       - key: AI_ASK_KEY
         sync: false
       - key: AI_DAILY_LIMIT_MEMBER
-        value: "10"
+        value: "4"
       - key: AI_DAILY_LIMIT_GUEST
-        value: "10"
+        value: "4"
       - key: AI_DAILY_LIMIT_ADMIN
         value: "0"

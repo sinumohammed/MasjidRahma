@@ -111,3 +111,16 @@
 :root[data-theme='dark'] .settings-row-label {
   color: #d9d9d9;
 }
+
+/* Assistant card: label on the left, number on the right, one row each - also on a phone. */
+.assistant-limit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.assistant-limit-label {
+  min-width: 0;
+  text-align: left;
+}

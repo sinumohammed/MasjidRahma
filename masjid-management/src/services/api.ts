@@ -857,3 +857,31 @@ export const clearAssistantChat = async (chatId: string): Promise<void> => {
     throw new Error(result.error || 'Failed to clear the chat');
   }
 };
+
+// Assistant settings (admin): questions per day for members, visitors (per
+// IP address) and the admin - 0 means no limit. Stored on the server, used at once.
+export interface AssistantDailyLimits {
+  member: number;
+  guest: number;
+  admin: number;
+}
+
+export const getAssistantSettings = async (): Promise<{ dailyLimits: AssistantDailyLimits; defaults: AssistantDailyLimits; max: number }> => {
+  const response = await apiFetch(`${API_BASE_URL}/admin/assistant-settings`, {
+    headers: { ...authHeaders() },
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Failed to load the assistant settings');
+  return result;
+};
+
+export const saveAssistantSettings = async (dailyLimits: AssistantDailyLimits): Promise<{ dailyLimits: AssistantDailyLimits }> => {
+  const response = await apiFetch(`${API_BASE_URL}/admin/assistant-settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ dailyLimits }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Failed to save the assistant settings');
+  return result;
+};
