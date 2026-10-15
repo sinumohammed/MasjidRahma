@@ -70,7 +70,7 @@ export const AI_OPENAPI = {
     '/ai/pending-dues': {
       get: {
         operationId: 'pending_dues',
-        summary: 'Members who owe dues now: amount due, payment frequency, missed months (a member sees only their own)',
+        summary: 'Members who owe dues now (pending payments): amount due, payment frequency, missed months. For a member: only their own, with a note saying so',
       },
     },
     '/ai/finance-summary': {

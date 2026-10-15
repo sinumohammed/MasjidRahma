@@ -799,6 +799,8 @@ export interface AssistantAnswer extends AssistantQuota {
 
 export interface AssistantStatus extends Partial<AssistantQuota> {
   available: boolean;
+  // Which login the chat answers for.
+  askingAs?: { role: 'admin' | 'member' | 'guest'; username?: string };
 }
 
 // An assistant error that still says how many questions are left.

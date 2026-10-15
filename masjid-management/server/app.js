@@ -2850,16 +2850,25 @@ ai.get('/me', aiRoute(async (req) => {
   };
 }));
 
-// The admin: everyone who owes. A member: only themselves (an empty list = nothing owed).
+// The admin: everyone who owes. A member: only themselves - and the answer
+// says so. Found live: a member asked (in Malayalam) for the list of pending
+// payments, got an empty list back - their own, already paid - and was told
+// "no members have pending dues", while the admin's page listed many.
+// Filtered data must say it is filtered.
+const ONLY_YOURS = (what) =>
+  `Only the asking member's own ${what} - this member cannot see other members'. ` +
+  `The full list is for the admin. An empty list means this member has none, not that nobody has any.`;
+
 ai.get('/pending-dues', aiRoute(async (req) => {
   const pending = (await getPendingDuesMembers()).filter((p) => req.aiUser.isAdmin || p.id === req.aiUser.memberId);
-  return pending.map((p) => ({
+  const rows = pending.map((p) => ({
     id: p.unique_id,
     name: p.name,
     paymentFrequency: p.payment_frequency,
     due: p.due,
     ...(p.missedMonths?.length ? { missedMonths: p.missedMonths } : {}),
   }));
+  return req.aiUser.isAdmin ? rows : { scope: ONLY_YOURS('dues'), pending: rows };
 }));
 
 // The same date-range rule as the app's own summary (dateRangeClause): both
@@ -2927,7 +2936,7 @@ ai.get('/transactions', aiRoute(async (req) => {
      LIMIT $${params.length}`,
     params
   );
-  return rows.map((t) => ({
+  const list = rows.map((t) => ({
     date: String(t.date).slice(0, 10),
     type: t.type,
     category: t.category,
@@ -2936,6 +2945,7 @@ ai.get('/transactions', aiRoute(async (req) => {
     ...(t.member ? { member: t.member } : {}),
     ...(t.bank ? { bank: t.bank } : {}),
   }));
+  return req.aiUser.isAdmin ? list : { scope: ONLY_YOURS('payments and transactions'), transactions: list };
 }));
 
 ai.get('/announcements', aiRoute(async (req) => {
@@ -3004,13 +3014,16 @@ async function giveQuestionBack(usage) {
 }
 const remainingOf = (usage, used) => (usage.limit ? { limit: usage.limit, remaining: Math.max(usage.limit - used, 0) } : { limit: null, remaining: null });
 
+// `askingAs`: which login the chat answers for - shown in the chat, so a
+// member's view ("only my dues") is never mistaken for the admin's.
 app.get('/api/assistant/status', optionalAuth, async (req, res) => {
   if (!assistantAvailable()) return res.json({ available: false });
   const usage = usageFor(req);
+  const askingAs = !req.user ? { role: 'guest' } : { role: req.user.isAdmin ? 'admin' : 'member', username: req.user.username };
   try {
-    res.json({ available: true, ...remainingOf(usage, await usedToday(usage)) });
+    res.json({ available: true, askingAs, ...remainingOf(usage, await usedToday(usage)) });
   } catch {
-    res.json({ available: true, limit: usage.limit, remaining: null });
+    res.json({ available: true, askingAs, limit: usage.limit, remaining: null });
   }
 });
 

@@ -8,6 +8,7 @@ import {
   AssistantError,
   type AssistantSource,
   type AssistantQuota,
+  type AssistantStatus,
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useVoiceRecorder, voiceSupported } from './useVoiceRecorder';
@@ -138,6 +139,7 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
   const [clearing, setClearing] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => loadRecent(account));
   const [quota, setQuota] = useState<AssistantQuota | null>(null);
+  const [askingAs, setAskingAs] = useState<AssistantStatus['askingAs']>();
   const [voiceLanguage, setVoiceLanguage] = useState(loadVoiceLanguage);
   const endRef = useRef<HTMLDivElement>(null);
   const noneLeft = quota?.remaining === 0;
@@ -155,7 +157,11 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
     setRecent(loadRecent(account));
     let cancelled = false;
     getAssistantStatus()
-      .then((s) => !cancelled && setQuota(s.limit !== undefined ? { limit: s.limit ?? null, remaining: s.remaining ?? null } : null))
+      .then((s) => {
+        if (cancelled) return;
+        setQuota(s.limit !== undefined ? { limit: s.limit ?? null, remaining: s.remaining ?? null } : null);
+        setAskingAs(s.askingAs);
+      })
       .catch(() => {});
     return () => {
       cancelled = true;
@@ -359,12 +365,21 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
           <Button type="primary" shape="circle" icon={<SendOutlined />} onClick={() => ask(draft)} disabled={!draft.trim() || busy || noneLeft} aria-label="Send" />
         </div>
       )}
+      <div className="assistant-footer">
+        {/* Which login answers - a member sees only their own dues, the admin everyone's. */}
+        {askingAs && (
+          <Typography.Text type="secondary" className="assistant-asking-as">
+            Asking as{' '}
+            {askingAs.role === 'admin' ? 'Admin' : askingAs.role === 'member' ? `${askingAs.username} (member)` : 'guest - log in for more'}
+          </Typography.Text>
+        )}
       {showVoice && (
         <div className="assistant-voice-language">
           <Typography.Text type="secondary">Voice:</Typography.Text>
           <Select size="small" value={voiceLanguage} onChange={setLanguage} options={VOICE_LANGUAGES} popupMatchSelectWidth={false} variant="borderless" aria-label="Voice language" />
         </div>
       )}
+      </div>
     </Card>
   );
 }
