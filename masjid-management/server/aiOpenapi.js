@@ -12,22 +12,39 @@ export const AI_OPENAPI = {
     version: '1.0.0',
     description:
       'Food-duty rotation (each day one member household supplies food), members, dues, ' +
-      'income/expense transactions, bank balances and announcements. Dates are in Asia/Kolkata.',
+      'income/expense transactions, bank balances and announcements. Dates are in Asia/Kolkata. ' +
+      'Answers follow the asking user: the admin sees everything; a member sees the schedule, announcements, ' +
+      'members, and only their own dues and payments; a visitor who is not logged in only the food-duty schedule.',
   },
   servers: [{ url: '/api' }],
   paths: {
+    '/ai/me': {
+      get: {
+        operationId: 'me',
+        summary: "The asking user: their member name and id, role, payment plan, own dues and next food-duty days - for questions about \"me\", \"my dues\", \"my next duty\"",
+      },
+    },
     '/ai/today-duty': {
       get: {
         operationId: 'today_duty',
         summary: "Today's food-duty member (which household supplies food today), and whether it was swapped",
       },
     },
+    '/ai/duty-on-date': {
+      get: {
+        operationId: 'duty_on_date',
+        summary: 'Who is on food duty on one particular day - tomorrow, a weekday, any date',
+        parameters: [
+          { name: 'date', in: 'query', required: true, description: 'The day as YYYY-MM-DD (work it out from today, e.g. tomorrow = today + 1)', schema: date() },
+        ],
+      },
+    },
     '/ai/duty-schedule': {
       get: {
         operationId: 'duty_schedule',
-        summary: 'Food-duty schedule day by day, starting today: date, weekday, member, swaps',
+        summary: 'Food-duty schedule for the coming days, day by day starting today: date, weekday, member, swaps - for "this week", "the next 10 days"',
         parameters: [
-          { name: 'days', in: 'query', required: false, description: 'How many days from today, 1-60 (default 14)', schema: { type: 'integer' } },
+          { name: 'days', in: 'query', required: false, description: 'How many days, counting today: 1 = today only, 7 = today and the next 6 days (1-60, default 14)', schema: { type: 'integer' } },
         ],
       },
     },
@@ -53,13 +70,13 @@ export const AI_OPENAPI = {
     '/ai/pending-dues': {
       get: {
         operationId: 'pending_dues',
-        summary: 'Members who owe dues now: amount due, payment frequency, missed months',
+        summary: 'Members who owe dues now: amount due, payment frequency, missed months (a member sees only their own)',
       },
     },
     '/ai/finance-summary': {
       get: {
         operationId: 'finance_summary',
-        summary: 'Total income, expense and balance for a date range, totals per category, and current bank account balances',
+        summary: 'Total income, expense and balance for a date range, totals per category, and current bank account balances (admin only)',
         parameters: [
           { name: 'startDate', in: 'query', required: false, description: 'First day YYYY-MM-DD (default: all time)', schema: date() },
           { name: 'endDate', in: 'query', required: false, description: 'Last day YYYY-MM-DD (default: all time)', schema: date() },
@@ -69,7 +86,7 @@ export const AI_OPENAPI = {
     '/ai/transactions': {
       get: {
         operationId: 'transactions',
-        summary: 'Income and expense transactions, newest first: date, type, category, amount, description, member, bank',
+        summary: 'Income and expense transactions, newest first: date, type, category, amount, description, member, bank (a member sees only their own payments)',
         parameters: [
           { name: 'startDate', in: 'query', required: false, description: 'First day YYYY-MM-DD', schema: date() },
           { name: 'endDate', in: 'query', required: false, description: 'Last day YYYY-MM-DD', schema: date() },

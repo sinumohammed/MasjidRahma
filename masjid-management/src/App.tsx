@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Layout, Menu, Button, Dropdown, Badge, ConfigProvider, theme as antdTheme } from 'antd';
+import { Layout, Menu, Button, Dropdown, Badge, ConfigProvider, Drawer, FloatButton, theme as antdTheme } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -14,6 +14,7 @@ import {
   LogoutOutlined,
   HistoryOutlined,
   BankOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import Dashboard, { type TransactionFilter } from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
@@ -26,6 +27,7 @@ import MemberAvatar from './components/Members/MemberAvatar';
 import SettingsPage from './components/SettingsPage';
 import Announcements from './components/Announcements';
 import MyNotifications from './components/MyNotifications';
+import AssistantChat from './components/AssistantChat';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
 import { useAuth } from './context/AuthContext';
@@ -33,6 +35,7 @@ import {
   getMyProfile,
   getAnnouncements,
   getMyNotifications,
+  getAssistantStatus,
   logActivity,
   SESSION_EXPIRED_EVENT,
   type MemberType,
@@ -73,6 +76,20 @@ function App() {
   const { isAdmin, isLoggedIn, memberId, username, hasAdmin, logout, checkSessionExpiry } = useAuth();
   const [activeKey, setActiveKey] = useState<string>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
+  // The Assistant (menu item and floating button) shows only when the server
+  // has the AI settings (AI_ASK_URL, AI_ASK_KEY) - asked again on login and
+  // logout. Not logged in, it answers the food-duty schedule only.
+  const [assistantAvailable, setAssistantAvailable] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getAssistantStatus()
+      .then(({ available }) => !cancelled && setAssistantAvailable(available))
+      .catch(() => !cancelled && setAssistantAvailable(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, username]);
   const [isMobile, setIsMobile] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [memberUniqueId, setMemberUniqueId] = useState<string | null>(null);
@@ -327,6 +344,15 @@ function App() {
       icon: <CalendarOutlined />,
       label: 'Yearly Schedule',
     },
+    ...(assistantAvailable
+      ? [
+          {
+            key: 'assistant',
+            icon: <RobotOutlined />,
+            label: 'Assistant',
+          },
+        ]
+      : []),
     ...(isAdmin
       ? [
           {
@@ -473,6 +499,8 @@ function App() {
         return <YearlyScheduleView />;
       case 'settings':
         return isLoggedIn ? <SettingsPage /> : <Dashboard />;
+      case 'assistant':
+        return assistantAvailable ? <AssistantChat /> : <Dashboard />;
       default:
         return <Dashboard />;
     }
@@ -575,6 +603,32 @@ function App() {
         </Layout.Footer>
       </Layout>
     </Layout>
+    {/* The assistant from any screen, logged in or not - except its own page. */}
+    {assistantAvailable && activeKey !== 'assistant' && (
+      <>
+        <FloatButton
+          icon={<RobotOutlined />}
+          type="primary"
+          tooltip="Ask the assistant"
+          aria-label="Ask the assistant"
+          onClick={() => setAssistantOpen(true)}
+        />
+        <Drawer
+          title={
+            <span>
+              <RobotOutlined /> Assistant
+            </span>
+          }
+          open={assistantOpen}
+          onClose={() => setAssistantOpen(false)}
+          placement="right"
+          size={isMobile ? '100%' : 440}
+          destroyOnHidden
+        >
+          <AssistantChat embedded />
+        </Drawer>
+      </>
+    )}
     <AuthModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </ConfigProvider>
   );

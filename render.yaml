@@ -22,3 +22,7 @@ services:
         sync: false
       - key: MASJID_AI_TOKEN
         sync: false
+      - key: AI_ASK_URL
+        sync: false
+      - key: AI_ASK_KEY
+        sync: false

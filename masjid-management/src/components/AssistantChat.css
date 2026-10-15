@@ -1,0 +1,131 @@
+/* The Assistant chat. Mobile rules from CLAUDE.md: the header stays one row
+   (space-between), buttons are icon-only circles, nothing wider than the
+   screen - long words and numbers wrap inside the bubbles. */
+.assistant-card {
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.assistant-card .ant-card-head-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.assistant-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assistant-messages {
+  /* The app's cards centre their text; a chat reads left to right. */
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 240px;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.assistant-empty {
+  padding: 8px 0;
+}
+
+.assistant-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assistant-suggestion {
+  cursor: pointer;
+  padding: 4px 10px;
+  margin: 0;
+  white-space: normal;
+}
+
+.assistant-bubble {
+  max-width: 85%;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.assistant-user {
+  align-self: flex-end;
+  background: var(--ant-color-primary, #1677ff);
+  color: #fff;
+  white-space: pre-wrap;
+}
+
+.assistant-assistant {
+  align-self: flex-start;
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.assistant-list-line {
+  padding-left: 8px;
+}
+
+.assistant-thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assistant-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.assistant-source {
+  margin: 0;
+  font-size: 12px;
+  white-space: normal;
+}
+
+.assistant-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.assistant-input-row .ant-input {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .assistant-messages {
+    max-height: calc(100vh - 260px);
+  }
+
+  .assistant-bubble {
+    max-width: 92%;
+  }
+}
+
+/* Inside the floating chat's drawer: no card frame, the drawer is the frame. */
+.assistant-embedded .ant-card-body {
+  padding: 0;
+}
+
+.assistant-embedded .assistant-messages {
+  max-height: none;
+  min-height: 0;
+  height: calc(100dvh - 190px);
+}
+
+.assistant-embedded-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}

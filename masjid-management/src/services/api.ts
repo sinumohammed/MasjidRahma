@@ -775,3 +775,48 @@ export const clearActivityLog = async (): Promise<void> => {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Failed to clear activity log');
 };
+
+// --- Assistant chat (server: /api/assistant/*) ---
+// The server asks the AI service for this user; the AI answers from this
+// app's data as the user may see it (admins everything, members their own
+// dues and payments). Unavailable when the server has no AI settings.
+export interface AssistantSource {
+  n: number;
+  source: string;
+  section?: string;
+}
+
+export interface AssistantAnswer {
+  answer: string;
+  sources: AssistantSource[];
+}
+
+export const getAssistantStatus = async (): Promise<{ available: boolean }> => {
+  const response = await apiFetch(`${API_BASE_URL}/assistant/status`, {
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) return { available: false };
+  return response.json();
+};
+
+export const askAssistant = async (question: string, chatId: string): Promise<AssistantAnswer> => {
+  const response = await apiFetch(`${API_BASE_URL}/assistant/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ question, chatId }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'The assistant could not answer - please try again');
+  return result;
+};
+
+export const clearAssistantChat = async (chatId: string): Promise<void> => {
+  const response = await apiFetch(`${API_BASE_URL}/assistant/chat/${encodeURIComponent(chatId)}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || 'Failed to clear the chat');
+  }
+};

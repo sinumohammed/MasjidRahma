@@ -2671,8 +2671,29 @@ app.post('/api/activity/delete', requireAdmin, async (req, res) => {
 // so it can only read these endpoints and survives a password change. Without
 // MASJID_AI_TOKEN the whole section answers 503. The endpoints are described
 // for the AI in aiOpenapi.js (served at /api/ai/openapi.json).
+//
+// Every call also carries the logged-in user it is for (X-User-Token), so
+// the answers follow the user's role: the admin sees everything; a member
+// sees the duty schedule, announcements and their own dues and payments -
+// not other members' dues, the accounts, or other members' transactions.
+// That token is NOT the user's login token (30 days, can do admin writes):
+// /api/assistant/ask below mints a separate one per question - 5 minutes,
+// read-only, signed with a key derived from JWT_SECRET, so requireAuth and
+// requireAdmin never accept it, and it is useless outside /api/ai/*.
+// A visitor who is not logged in is a guest: only the food-duty schedule
+// (today, the coming days, the yearly duty days) - the same as the app shows
+// anonymous visitors. Anything else answers 403 "log in".
 const MASJID_AI_TOKEN = process.env.MASJID_AI_TOKEN;
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest();
+
+const AI_USER_SECRET = crypto.createHmac('sha256', JWT_SECRET).update('masjid-ai-user-token').digest('base64');
+const AI_USER_TOKEN_TTL = '5m';
+
+function aiUserToken(user) {
+  if (!user) return jwt.sign({ sub: 'guest', guest: true, isAdmin: false, memberId: null, scope: 'ai-read' }, AI_USER_SECRET, { expiresIn: AI_USER_TOKEN_TTL });
+  return jwt.sign({ sub: user.id, isAdmin: Boolean(user.isAdmin), memberId: user.memberId ?? null, scope: 'ai-read' }, AI_USER_SECRET, { expiresIn: AI_USER_TOKEN_TTL });
+}
+const AI_GUEST_PATHS = new Set(['/me', '/today-duty', '/duty-on-date', '/duty-schedule', '/member-duty-days']);
 
 function requireAiToken(req, res, next) {
   if (!MASJID_AI_TOKEN) return res.status(503).json({ error: 'AI access is not configured (MASJID_AI_TOKEN)' });
@@ -2681,8 +2702,24 @@ function requireAiToken(req, res, next) {
   if (!crypto.timingSafeEqual(sha256(given), sha256(MASJID_AI_TOKEN))) {
     return res.status(401).json({ error: 'AI access token required' });
   }
+  if (req.path === '/openapi.json') return next();
+  try {
+    const claims = jwt.verify(String(req.get('x-user-token') ?? ''), AI_USER_SECRET);
+    if (claims.scope !== 'ai-read') throw new Error('wrong scope');
+    req.aiUser = { id: claims.sub, guest: claims.guest === true, isAdmin: claims.isAdmin === true, memberId: claims.memberId ?? null };
+  } catch {
+    return res.status(401).json({ error: 'a user token is required (X-User-Token missing or expired)' });
+  }
+  if (req.aiUser.guest && !AI_GUEST_PATHS.has(req.path)) {
+    return res.status(403).json({ error: 'log in to the masjid app to see this - without logging in, only the food-duty schedule is available' });
+  }
   next();
 }
+
+const forbidden = (message) => Object.assign(new Error(message), { status: 403 });
+const adminOnly = (req, what) => {
+  if (!req.aiUser.isAdmin) throw forbidden(`only the admin can see ${what}`);
+};
 
 const ai = express.Router();
 ai.use(requireAiToken);
@@ -2718,6 +2755,24 @@ ai.get('/today-duty', aiRoute(async () => {
   };
 }));
 
+// One day, any date: "tomorrow", "this Friday", "on 3 December". Found with
+// the planner: for "tomorrow" it asked duty-schedule with days=1, which is
+// today only. Dates up to a year ahead use the same day-by-day schedule as
+// the app (getSchedulePreview); others the yearly projection.
+ai.get('/duty-on-date', aiRoute(async (req) => {
+  const date = req.query.date;
+  if (!isDateStr(date)) throw badRequest('date must be YYYY-MM-DD');
+  const ahead = daysBetweenDates(todayInMasjidTimezone(), date);
+  if (ahead >= 0 && ahead < 366) {
+    const d = (await getSchedulePreview(ahead + 1))[ahead];
+    return { date, weekday: weekdayOf(date), member: nameOf(d.member), ...(d.swapped ? { swapped: true, originallyScheduled: nameOf(d.originalMember) } : {}) };
+  }
+  const [year, month, day] = date.split('-').map(Number);
+  const data = await getYearlySchedule(year);
+  const onDuty = data.members.find((m) => m.months[month - 1].some((d) => d.day === day && d.swapped !== 'away'));
+  return { date, weekday: weekdayOf(date), member: onDuty ? { id: onDuty.unique_id, name: onDuty.name } : null, note: ahead < 0 ? 'projected from the rotation; past swaps may differ' : undefined };
+}));
+
 ai.get('/duty-schedule', aiRoute(async (req) => {
   const days = clampInt(req.query.days, 1, 60, 14);
   const preview = await getSchedulePreview(days);
@@ -2751,18 +2806,41 @@ ai.get('/member-duty-days', aiRoute(async (req) => {
 
 ai.get('/members', aiRoute(async (req) => {
   const members = await dbAll('SELECT * FROM members ORDER BY position ASC');
+  const maySeePlan = (m) => req.aiUser.isAdmin || m.id === req.aiUser.memberId;
   return members.filter(matches(req.query.search)).map((m) => ({
     id: m.unique_id,
     name: m.name,
     people: m.member_count,
     inFoodRotation: m.member_type === 'regular',
     active: m.active,
-    paymentPlan: m.payment_amount != null && m.payment_frequency ? { amount: Number(m.payment_amount), frequency: m.payment_frequency } : null,
+    // Another member's payment plan is the admin's to see.
+    ...(maySeePlan(m) ? { paymentPlan: m.payment_amount != null && m.payment_frequency ? { amount: Number(m.payment_amount), frequency: m.payment_frequency } : null } : {}),
   }));
 }));
 
-ai.get('/pending-dues', aiRoute(async () => {
-  const pending = await getPendingDuesMembers();
+// Who is asking: "my dues", "my next duty" - the member's own record, or the admin.
+ai.get('/me', aiRoute(async (req) => {
+  if (req.aiUser.guest) return { role: 'guest', note: 'Not logged in - only the food-duty schedule is available' };
+  if (!req.aiUser.memberId) return { role: req.aiUser.isAdmin ? 'admin' : 'user', note: 'Not linked to a member household' };
+  const m = await dbGet('SELECT * FROM members WHERE id = $1', [req.aiUser.memberId]);
+  if (!m) return { role: 'member', note: 'Member record not found' };
+  const dueInfo = await computeMemberDueInfo(m, getMasjidTodayParts());
+  const schedule = await getSchedulePreview(60);
+  return {
+    role: req.aiUser.isAdmin ? 'admin' : 'member',
+    id: m.unique_id,
+    name: m.name,
+    people: m.member_count,
+    inFoodRotation: m.member_type === 'regular',
+    paymentPlan: m.payment_amount != null && m.payment_frequency ? { amount: Number(m.payment_amount), frequency: m.payment_frequency } : null,
+    dues: dueInfo.hasPlan ? { due: Math.max(Number(dueInfo.due) || 0, 0), ...(dueInfo.missedMonths?.length ? { missedMonths: dueInfo.missedMonths } : {}) } : null,
+    nextDutyDays: schedule.filter((d) => d.member?.id === m.id).slice(0, 5).map((d) => ({ date: d.date, weekday: weekdayOf(d.date) })),
+  };
+}));
+
+// The admin: everyone who owes. A member: only themselves (an empty list = nothing owed).
+ai.get('/pending-dues', aiRoute(async (req) => {
+  const pending = (await getPendingDuesMembers()).filter((p) => req.aiUser.isAdmin || p.id === req.aiUser.memberId);
   return pending.map((p) => ({
     id: p.unique_id,
     name: p.name,
@@ -2782,6 +2860,7 @@ function aiDateRange(req) {
 }
 
 ai.get('/finance-summary', aiRoute(async (req) => {
+  adminOnly(req, "the masjid's accounts");
   const { clause, params } = aiDateRange(req);
   const totals = await dbAll(`SELECT type, SUM(amount) AS total FROM transactions ${clause} GROUP BY type`, params);
   const byCategory = await dbAll(
@@ -2814,6 +2893,12 @@ ai.get('/transactions', aiRoute(async (req) => {
     if (!['income', 'expense'].includes(req.query.type)) throw badRequest('type must be income or expense');
     params.push(req.query.type);
     where.push(`t.type = $${params.length}`);
+  }
+  // A member sees only their own transactions (their payments).
+  if (!req.aiUser.isAdmin) {
+    if (!req.aiUser.memberId) throw forbidden('only the admin can see transactions');
+    params.push(req.aiUser.memberId);
+    where.push(`t.member_id = $${params.length}`);
   }
   if (req.query.search) {
     params.push(`%${String(req.query.search).trim()}%`);
@@ -2848,6 +2933,81 @@ ai.get('/announcements', aiRoute(async (req) => {
 }));
 
 app.use('/api/ai', ai);
+
+// --- The assistant chat for logged-in users (/api/assistant/*) ---
+// The app's chat screen asks here; this server asks the AI service
+// (POST AI_ASK_URL with this app's key, AI_ASK_KEY - never sent to the
+// browser), with a 5-minute read-only token for the user (aiUserToken
+// above), so the AI service reads /api/ai/* as that user. Each user's
+// conversation is kept apart on the AI side ("u-<user id>-<chat>").
+// Unset AI_ASK_URL or AI_ASK_KEY: 503, and the app hides the chat.
+// Not logged in: a guest - asked only about the app's data (agent
+// connected_apps, so the chat is not a general chatbot for anyone), only the
+// duty schedule (AI_GUEST_PATHS), and at most AI_GUEST_PER_HOUR questions an
+// hour per IP address, since every question spends the AI service's quota.
+const AI_ASK_URL = process.env.AI_ASK_URL;
+const AI_ASK_KEY = process.env.AI_ASK_KEY;
+const CHAT_ID = /^[A-Za-z0-9_-]{1,40}$/;
+const conversationFor = (req, chatId) => (req.user ? `u-${req.user.id}-${chatId}` : `g-${chatId}`).slice(0, 100);
+const AI_GUEST_PER_HOUR = Number(process.env.AI_GUEST_PER_HOUR || 20);
+const guestAsked = new Map(); // ip -> { hour, count }; one process on Render
+
+function guestOverLimit(ip) {
+  const hour = Math.floor(Date.now() / 3600000);
+  if (guestAsked.size > 5000) guestAsked.clear();
+  const entry = guestAsked.get(ip);
+  const count = entry && entry.hour === hour ? entry.count + 1 : 1;
+  guestAsked.set(ip, { hour, count });
+  return count > AI_GUEST_PER_HOUR;
+}
+
+app.get('/api/assistant/status', optionalAuth, (req, res) => {
+  res.json({ available: Boolean(AI_ASK_URL && AI_ASK_KEY && MASJID_AI_TOKEN) });
+});
+
+app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
+  if (!AI_ASK_URL || !AI_ASK_KEY || !MASJID_AI_TOKEN) return res.status(503).json({ error: 'The assistant is not set up on this server' });
+  const question = String(req.body?.question ?? '').trim();
+  const chatId = String(req.body?.chatId ?? 'main');
+  if (!question || question.length > 2000) return res.status(400).json({ error: 'Ask a question of up to 2000 characters' });
+  if (!CHAT_ID.test(chatId)) return res.status(400).json({ error: 'Invalid chatId' });
+  // A guest's conversation is known only by its id: the app sends a random
+  // one per browser, so two guests never share one ("main" would).
+  if (!req.user && chatId.length < 16) return res.status(400).json({ error: 'A guest chat needs a random chatId of 16+ characters' });
+  if (!req.user && guestOverLimit(req.ip)) {
+    return res.status(429).json({ error: 'Too many questions for now - log in, or try again in an hour' });
+  }
+  const mode = req.user ? { mode: 'single' } : { mode: 'multi', agent: 'connected_apps' };
+  try {
+    const aiRes = await fetch(AI_ASK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_ASK_KEY}` },
+      body: JSON.stringify({ question, conversationId: conversationFor(req, chatId), ...mode, user: { token: aiUserToken(req.user) } }),
+      // The AI may wait for this server's own /api/ai/* calls; a cold Render start is ~50 s.
+      signal: AbortSignal.timeout(120000),
+    });
+    const data = await aiRes.json().catch(() => ({}));
+    if (!aiRes.ok) return res.status(aiRes.status === 429 ? 429 : 502).json({ error: data.error ?? 'The assistant could not answer - please try again' });
+    res.json({ answer: data.answer, sources: (data.sources ?? []).map((s) => ({ n: s.n, source: s.source, section: s.section })) });
+  } catch (error) {
+    res.status(502).json({ error: error.name === 'TimeoutError' ? 'The assistant took too long - please try again' : 'The assistant could not be reached' });
+  }
+});
+
+app.delete('/api/assistant/chat/:chatId', optionalAuth, async (req, res) => {
+  if (!AI_ASK_URL || !AI_ASK_KEY) return res.status(503).json({ error: 'The assistant is not set up on this server' });
+  if (!CHAT_ID.test(req.params.chatId)) return res.status(400).json({ error: 'Invalid chatId' });
+  try {
+    await fetch(`${AI_ASK_URL.replace(/\/$/, '')}/conversations/${encodeURIComponent(conversationFor(req, req.params.chatId))}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${AI_ASK_KEY}` },
+      signal: AbortSignal.timeout(15000),
+    });
+    res.json({ ok: true });
+  } catch {
+    res.status(502).json({ error: 'The assistant could not be reached' });
+  }
+});
 
 app.get('/health', (req, res) => {
   res.json({ status: 'API is running' });
