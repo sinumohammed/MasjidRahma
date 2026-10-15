@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Card, Input, Button, Alert, Tag, Typography, Popconfirm, Spin, Select, Tooltip, message } from 'antd';
+import { Input, Button, Alert, Tag, Typography, Popconfirm, Select, Tooltip, message } from 'antd';
 import { RobotOutlined, SendOutlined, ClearOutlined, AudioOutlined, CheckOutlined, CloseOutlined, HistoryOutlined } from '@ant-design/icons';
 import {
   askAssistant,
@@ -12,6 +12,7 @@ import {
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useVoiceRecorder, voiceSupported } from './useVoiceRecorder';
+import { useFitToViewport } from './useFitToViewport';
 import './AssistantChat.css';
 
 // Ask questions about the masjid's data in plain words. The server asks the
@@ -141,8 +142,13 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
   const [quota, setQuota] = useState<AssistantQuota | null>(null);
   const [askingAs, setAskingAs] = useState<AssistantStatus['askingAs']>();
   const [voiceLanguage, setVoiceLanguage] = useState(loadVoiceLanguage);
-  const endRef = useRef<HTMLDivElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const noneLeft = quota?.remaining === 0;
+  // The chat ends at the bottom of the visible screen (above the keyboard on a
+  // phone); on the page, a little space is left below it.
+  // 200 px at the least: with the keyboard open a phone has about that much.
+  const fitHeight = useFitToViewport(shellRef, { bottomGap: embedded ? 0 : 16, min: 200 });
 
   const voice = useVoiceRecorder({
     language: voiceLanguage,
@@ -168,10 +174,13 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
     };
   }, [isLoggedIn, account]);
 
+  // Keep the newest message in view - scrolling the list only: scrollIntoView
+  // also scrolled the whole page on phones.
   useEffect(() => {
     saveMessages(account, messages);
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, account]);
+    const list = listRef.current;
+    if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+  }, [messages, account, asking]);
 
   const suggestions = !isLoggedIn
     ? ['Who supplies food today?', 'Who is on food duty tomorrow?', 'Who is on duty this Friday?', 'Which days is MR#001 on duty this month?']
@@ -212,22 +221,24 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
 
   const clearButton = messages.length > 0 && (
     <Popconfirm title="Clear this chat?" onConfirm={clearChat} okText="Clear" cancelText="Cancel">
-      <Button shape="circle" icon={<ClearOutlined />} loading={clearing} aria-label="Clear chat" />
+      <Button type="text" shape="circle" icon={<ClearOutlined />} loading={clearing} aria-label="Clear chat" />
     </Popconfirm>
   );
 
-  // "7 of 10 questions left today" - nothing when there is no limit (admin).
-  const quotaTag = quota?.limit ? (
-    <Tag className="assistant-quota" color={noneLeft ? 'error' : quota.remaining! <= 2 ? 'warning' : 'default'}>
-      {noneLeft ? 'No questions left today' : `${quota.remaining} of ${quota.limit} questions left today`}
-    </Tag>
-  ) : null;
-  const headerActions = (quotaTag || clearButton) && (
-    <span className="assistant-header-actions">
-      {quotaTag}
-      {clearButton}
+  // "3 of 4 left today" - nothing when there is no limit (the admin).
+  const quotaPill = quota?.limit ? (
+    <span className={`assistant-quota${noneLeft ? ' is-out' : quota.remaining! <= 1 ? ' is-low' : ''}`} title="Questions left today">
+      {noneLeft ? 'None left today' : `${quota.remaining} of ${quota.limit} left today`}
     </span>
-  );
+  ) : null;
+
+  const askingAsText = askingAs
+    ? askingAs.role === 'admin'
+      ? 'Asking as Admin'
+      : askingAs.role === 'member'
+        ? `Asking as ${askingAs.username}`
+        : 'Guest - log in for more'
+    : '';
 
   const setLanguage = (value: string) => {
     setVoiceLanguage(value);
@@ -241,145 +252,191 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
   const showVoice = voiceSupported();
 
   return (
-    <Card
-      className={`assistant-card${embedded ? ' assistant-embedded' : ''}`}
-      variant={embedded ? 'borderless' : undefined}
-      title={
-        embedded ? undefined : (
-          <span className="assistant-title">
-            <RobotOutlined /> Assistant
-          </span>
-        )
-      }
-      extra={embedded ? undefined : headerActions}
+    <div
+      ref={shellRef}
+      // Little room (a phone with the keyboard open): only the composer below the messages.
+      className={`assistant-shell${embedded ? ' assistant-embedded' : ''}${fitHeight && fitHeight < 440 ? ' is-tight' : ''}`}
+      style={fitHeight ? { height: fitHeight } : undefined}
     >
-      {embedded && headerActions && <div className="assistant-embedded-actions">{headerActions}</div>}
-      <div className="assistant-messages">
+      {/* Header: who answers, how many questions are left, clear. In the
+          drawer the title is the drawer's own. */}
+      <div className="assistant-head">
+        {!embedded && (
+          <span className="assistant-head-avatar" aria-hidden>
+            <RobotOutlined />
+          </span>
+        )}
+        <div className="assistant-head-text">
+          {!embedded && <div className="assistant-head-title">Assistant</div>}
+          {askingAsText && <div className="assistant-head-sub">{askingAsText}</div>}
+        </div>
+        {quotaPill}
+        {clearButton}
+      </div>
+
+      <div className="assistant-messages" ref={listRef}>
         {messages.length === 0 && (
           <div className="assistant-empty">
-            <Typography.Paragraph type="secondary">
+            <span className="assistant-empty-avatar" aria-hidden>
+              <RobotOutlined />
+            </span>
+            <div className="assistant-empty-title">How can I help?</div>
+            <Typography.Paragraph type="secondary" className="assistant-empty-text">
               {!isLoggedIn
                 ? 'Ask who is on food duty today, tomorrow or any day this year. Log in to ask about dues and more.'
                 : `Ask about the food-duty schedule, members, dues${isAdmin ? ', income and expenses' : ''} or announcements.${isAdmin ? '' : ' You see your own dues and payments only.'}`}
             </Typography.Paragraph>
             {recent.length > 0 && (
-              <Typography.Text type="secondary" className="assistant-chip-label">
-                <HistoryOutlined /> Your recent questions
-              </Typography.Text>
+              <>
+                <div className="assistant-chip-label">
+                  <HistoryOutlined /> Your recent questions
+                </div>
+                <div className="assistant-chips">
+                  {recent.map((s) => (
+                    <button type="button" key={s} className="assistant-chip is-recent" onClick={() => ask(s)} disabled={busy || noneLeft}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
-            {recent.length > 0 && (
-              <div className="assistant-suggestions">
-                {recent.map((s) => (
-                  <Tag key={s} className="assistant-suggestion assistant-recent" onClick={() => ask(s)}>
-                    {s}
-                  </Tag>
-                ))}
-              </div>
-            )}
-            <div className="assistant-suggestions">
+            <div className="assistant-chip-label">Try asking</div>
+            <div className="assistant-chips">
               {suggestions.filter((s) => !recent.includes(s)).map((s) => (
-                <Tag key={s} className="assistant-suggestion" onClick={() => ask(s)}>
+                <button type="button" key={s} className="assistant-chip" onClick={() => ask(s)} disabled={busy || noneLeft}>
                   {s}
-                </Tag>
+                </button>
               ))}
             </div>
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={`assistant-bubble assistant-${m.role}`}>
-            {m.role === 'assistant' && !m.error ? formatAnswer(m.text) : m.error ? <Alert type="warning" showIcon message={m.text} /> : m.text}
-            {m.sources && m.sources.length > 0 && (
-              <div className="assistant-sources">
-                {m.sources.map((s) => (
-                  <Tag key={`${s.n}-${s.source}`} className="assistant-source">
-                    [{s.n}] {sourceLabel(s)}
-                  </Tag>
-                ))}
+        {messages.map((m, i) =>
+          m.role === 'user' ? (
+            <div key={i} className="assistant-row is-user">
+              <div className="assistant-bubble is-user">{m.text}</div>
+            </div>
+          ) : (
+            <div key={i} className="assistant-row is-assistant">
+              <span className="assistant-avatar" aria-hidden>
+                <RobotOutlined />
+              </span>
+              <div className="assistant-bubble is-assistant">
+                {m.error ? <Alert type="warning" showIcon message={m.text} /> : formatAnswer(m.text)}
+                {m.sources && m.sources.length > 0 && (
+                  <div className="assistant-sources">
+                    {m.sources.map((s) => (
+                      <Tag key={`${s.n}-${s.source}`} className="assistant-source" bordered={false}>
+                        [{s.n}] {sourceLabel(s)}
+                      </Tag>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+            </div>
+          )
+        )}
         {asking && (
-          <div className="assistant-bubble assistant-assistant assistant-thinking">
-            <Spin size="small" /> <span>Looking it up…</span>
+          <div className="assistant-row is-assistant" aria-live="polite">
+            <span className="assistant-avatar" aria-hidden>
+              <RobotOutlined />
+            </span>
+            <div className="assistant-bubble is-assistant assistant-typing" aria-label="Looking it up">
+              <span />
+              <span />
+              <span />
+            </div>
           </div>
         )}
-        <div ref={endRef} />
       </div>
-      {/* Recent questions while chatting, one tap to ask again. */}
-      {messages.length > 0 && recent.length > 0 && voice.status === 'idle' && (
-        <div className="assistant-recent-row" aria-label="Your recent questions">
-          <HistoryOutlined className="assistant-recent-icon" />
-          {recent.map((s) => (
-            <Tag key={s} className="assistant-suggestion assistant-recent" onClick={() => ask(s)}>
-              {s}
-            </Tag>
-          ))}
-        </div>
-      )}
-      {noneLeft && (
-        <Alert
-          className="assistant-limit"
-          type="info"
-          showIcon
-          message={isLoggedIn ? "You have used today's questions - ask again tomorrow." : "You have used today's questions - log in, or ask again tomorrow."}
-        />
-      )}
-      {voice.status === 'recording' ? (
-        <div className="assistant-input-row assistant-recording">
-          <span className="assistant-rec-dot" aria-hidden />
-          <span className="assistant-rec-time">
-            Listening… {Math.floor(voice.seconds / 60)}:{String(voice.seconds % 60).padStart(2, '0')}
-          </span>
-          <Button shape="circle" icon={<CloseOutlined />} onClick={voice.cancel} aria-label="Cancel recording" />
-          <Button type="primary" shape="circle" icon={<CheckOutlined />} onClick={voice.stop} aria-label="Done speaking" />
-        </div>
-      ) : (
-        <div className="assistant-input-row">
-          <Input.TextArea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onPressEnter={(e) => {
-              if (!e.shiftKey) {
-                e.preventDefault();
-                ask(draft);
-              }
-            }}
-            placeholder={voice.status === 'transcribing' ? 'Turning your words into text…' : 'Ask a question…'}
-            autoSize={{ minRows: 1, maxRows: 4 }}
-            maxLength={2000}
-            disabled={busy || noneLeft}
-          />
-          {showVoice && (
-            <Tooltip title="Speak your question">
-              <Button
-                shape="circle"
-                icon={<AudioOutlined />}
-                loading={voice.status === 'transcribing'}
-                onClick={voice.start}
-                disabled={busy || noneLeft}
-                aria-label="Speak your question"
-              />
-            </Tooltip>
-          )}
-          <Button type="primary" shape="circle" icon={<SendOutlined />} onClick={() => ask(draft)} disabled={!draft.trim() || busy || noneLeft} aria-label="Send" />
-        </div>
-      )}
-      <div className="assistant-footer">
-        {/* Which login answers - a member sees only their own dues, the admin everyone's. */}
-        {askingAs && (
-          <Typography.Text type="secondary" className="assistant-asking-as">
-            Asking as{' '}
-            {askingAs.role === 'admin' ? 'Admin' : askingAs.role === 'member' ? `${askingAs.username} (member)` : 'guest - log in for more'}
-          </Typography.Text>
+
+      {/* Bottom, always in view: recent questions, the limit note, the composer. */}
+      <div className="assistant-bottom">
+        {messages.length > 0 && recent.length > 0 && voice.status === 'idle' && !noneLeft && (
+          <div className="assistant-recent-row" aria-label="Your recent questions">
+            <HistoryOutlined className="assistant-recent-icon" />
+            {recent.map((s) => (
+              <button type="button" key={s} className="assistant-chip is-recent" onClick={() => ask(s)} disabled={busy}>
+                {s}
+              </button>
+            ))}
+          </div>
         )}
-      {showVoice && (
-        <div className="assistant-voice-language">
-          <Typography.Text type="secondary">Voice:</Typography.Text>
-          <Select size="small" value={voiceLanguage} onChange={setLanguage} options={VOICE_LANGUAGES} popupMatchSelectWidth={false} variant="borderless" aria-label="Voice language" />
+        {noneLeft && (
+          <Alert
+            className="assistant-limit"
+            type="info"
+            showIcon
+            message={isLoggedIn ? "You have used today's questions - ask again tomorrow." : "You have used today's questions - log in, or ask again tomorrow."}
+          />
+        )}
+        <div className={`assistant-composer${voice.status === 'recording' ? ' is-recording' : ''}`}>
+          {voice.status === 'recording' ? (
+            <>
+              <span className="assistant-rec-dot" aria-hidden />
+              <span className="assistant-rec-time">
+                Listening… {Math.floor(voice.seconds / 60)}:{String(voice.seconds % 60).padStart(2, '0')}
+              </span>
+              <Button type="text" shape="circle" icon={<CloseOutlined />} onClick={voice.cancel} aria-label="Cancel recording" />
+              <Button type="primary" shape="circle" icon={<CheckOutlined />} onClick={voice.stop} aria-label="Done speaking" />
+            </>
+          ) : (
+            <>
+              <Input.TextArea
+                className="assistant-input"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onPressEnter={(e) => {
+                  if (!e.shiftKey) {
+                    e.preventDefault();
+                    ask(draft);
+                  }
+                }}
+                placeholder={voice.status === 'transcribing' ? 'Turning your words into text…' : noneLeft ? 'No questions left today' : 'Ask a question…'}
+                autoSize={{ minRows: 1, maxRows: 4 }}
+                maxLength={2000}
+                disabled={busy || noneLeft}
+                variant="borderless"
+                enterKeyHint="send"
+              />
+              {showVoice && (
+                <Tooltip title="Speak your question">
+                  <Button
+                    type="text"
+                    shape="circle"
+                    icon={<AudioOutlined />}
+                    loading={voice.status === 'transcribing'}
+                    onClick={voice.start}
+                    disabled={busy || noneLeft}
+                    aria-label="Speak your question"
+                  />
+                </Tooltip>
+              )}
+              <Button
+                type="primary"
+                shape="circle"
+                icon={<SendOutlined />}
+                onClick={() => ask(draft)}
+                disabled={!draft.trim() || busy || noneLeft}
+                aria-label="Send"
+              />
+            </>
+          )}
         </div>
-      )}
+        {showVoice && (
+          <div className="assistant-meta">
+            <span>Voice</span>
+            <Select
+              size="small"
+              value={voiceLanguage}
+              onChange={setLanguage}
+              options={VOICE_LANGUAGES}
+              popupMatchSelectWidth={false}
+              variant="borderless"
+              aria-label="Voice language"
+            />
+          </div>
+        )}
       </div>
-    </Card>
+    </div>
   );
 }

@@ -109,3 +109,17 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* Phones: every text field at 16px. iPhone Safari zooms into any smaller one
+   on focus and stays zoomed - the page then reaches past the screen edges and
+   has to be dragged back with a finger. */
+@media (max-width: 768px) {
+  input,
+  textarea,
+  select,
+  .ant-input,
+  .ant-input-number-input,
+  .ant-select-selection-search-input {
+    font-size: 16px !important;
+  }
+}

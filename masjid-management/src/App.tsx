@@ -624,6 +624,7 @@ function App() {
           placement="right"
           size={isMobile ? '100%' : 440}
           destroyOnHidden
+          styles={{ body: { padding: 0, overflow: 'hidden' } }}
         >
           <AssistantChat embedded />
         </Drawer>
