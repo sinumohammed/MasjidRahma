@@ -11,6 +11,7 @@ import jwt from 'jsonwebtoken';
 import webpush from 'web-push';
 import { waitUntil } from '@vercel/functions';
 import { AI_OPENAPI } from './aiOpenapi.js';
+import { findMembers, toLatin } from './nameMatch.js';
 
 // Load server/.env by absolute path rather than relying on dotenv's default
 // (relative to process.cwd()) - the local/Render entry (server/index.js) and
@@ -2750,11 +2751,18 @@ const weekdayOf = (dateStr) => new Date(`${dateStr}T12:00:00Z`).toLocaleDateStri
 const isDateStr = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 const clampInt = (value, min, max, fallback) => Math.min(Math.max(parseInt(value, 10) || fallback, min), max);
 const nameOf = (member) => (member ? { id: member.unique_id, name: member.name } : null);
-// "Fatima" or "M12" -> rows whose name or member id contains it.
-const matches = (search) => {
-  const s = String(search ?? '').trim().toLowerCase();
-  return (m) => !s || m.name.toLowerCase().includes(s) || String(m.unique_id).toLowerCase().includes(s);
-};
+// A member search, in English letters or Malayalam, or a member id
+// (nameMatch.js): names are in Malayalam, "Sinu TK" must find "സിനു ടി കെ".
+const searchOf = (req) => String(req.query.search ?? '').trim();
+// When a search finds nobody: say so, and give every name with an English
+// spelling, so the answer can still say who it may be (or that nobody is).
+async function noMatchFor(search) {
+  const all = await dbAll('SELECT unique_id, name FROM members ORDER BY position ASC');
+  return {
+    noMatch: `No member name matched "${search}". Names are written in Malayalam; all members are listed with an English spelling - pick the one meant, or say that nobody matches.`,
+    allMembers: all.map((m) => ({ id: m.unique_id, name: m.name.trim(), nameInEnglishLetters: toLatin(m.name).trim() })),
+  };
+}
 const aiRoute = (fn) => async (req, res) => {
   try {
     res.json(await fn(req));
@@ -2815,11 +2823,14 @@ ai.get('/member-duty-days', aiRoute(async (req) => {
   const year = clampInt(req.query.year, 2000, 2100, currentYear);
   const data = await getYearlySchedule(year);
   const monthNames = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2000, i, 1)).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }));
+  const found = findMembers(searchOf(req), data.members);
+  if (searchOf(req) && !found.length) return { year, ...(await noMatchFor(searchOf(req))) };
   return {
     year,
-    members: data.members.filter(matches(req.query.search)).map((m) => ({
+    members: found.map((m) => ({
       id: m.unique_id,
       name: m.name,
+      nameInEnglishLetters: toLatin(m.name).trim(),
       // { "January": [3, 21], ... } - only months with duty days; swaps noted
       dutyDays: Object.fromEntries(
         m.months
@@ -2833,9 +2844,12 @@ ai.get('/member-duty-days', aiRoute(async (req) => {
 ai.get('/members', aiRoute(async (req) => {
   const members = await dbAll('SELECT * FROM members ORDER BY position ASC');
   const maySeePlan = (m) => req.aiUser.isAdmin || m.id === req.aiUser.memberId;
-  return inRupees(members.filter(matches(req.query.search)).map((m) => ({
+  const found = findMembers(searchOf(req), members);
+  if (searchOf(req) && !found.length) return noMatchFor(searchOf(req));
+  return inRupees(found.map((m) => ({
     id: m.unique_id,
     name: m.name,
+    nameInEnglishLetters: toLatin(m.name).trim(),
     people: m.member_count,
     inFoodRotation: m.member_type === 'regular',
     active: m.active,
@@ -2874,14 +2888,30 @@ const ONLY_YOURS = (what) =>
   `The full list is for the admin. An empty list means this member has none, not that nobody has any.`;
 
 ai.get('/pending-dues', aiRoute(async (req) => {
-  const pending = (await getPendingDuesMembers()).filter((p) => req.aiUser.isAdmin || p.id === req.aiUser.memberId);
+  let pending = (await getPendingDuesMembers()).filter((p) => req.aiUser.isAdmin || p.id === req.aiUser.memberId);
+  // One member's dues ("dues of Sinu TK"): found among all members first, so
+  // "has no pending dues" and "no such member" are told apart.
+  const search = searchOf(req);
+  let searched = null;
+  if (search) {
+    const who = findMembers(search, await dbAll('SELECT id, unique_id, name FROM members ORDER BY position ASC'));
+    if (!who.length) return noMatchFor(search);
+    const ids = new Set(who.map((m) => m.id));
+    pending = pending.filter((p) => ids.has(p.id));
+    searched = {
+      searchedFor: search,
+      membersFound: who.map((m) => ({ id: m.unique_id, name: m.name.trim(), hasPendingDues: pending.some((p) => p.id === m.id) })),
+    };
+  }
   const rows = pending.map((p) => ({
     id: p.unique_id,
     name: p.name,
+    nameInEnglishLetters: toLatin(p.name).trim(),
     paymentFrequency: p.payment_frequency,
     due: p.due,
     ...(p.missedMonths?.length ? { missedMonths: p.missedMonths } : {}),
   }));
+  if (searched) return inRupees({ ...searched, ...(req.aiUser.isAdmin ? {} : { scope: ONLY_YOURS('dues') }), pending: rows });
   return inRupees(req.aiUser.isAdmin ? rows : { scope: ONLY_YOURS('dues'), pending: rows });
 }));
 
@@ -2935,9 +2965,13 @@ ai.get('/transactions', aiRoute(async (req) => {
     params.push(req.aiUser.memberId);
     where.push(`t.member_id = $${params.length}`);
   }
-  if (req.query.search) {
-    params.push(`%${String(req.query.search).trim()}%`);
-    where.push(`(t.category ILIKE $${params.length} OR t.description ILIKE $${params.length} OR m.name ILIKE $${params.length})`);
+  if (searchOf(req)) {
+    // A member's name in any script (nameMatch.js), or words in the category or description.
+    const who = findMembers(searchOf(req), await dbAll('SELECT id, unique_id, name FROM members'));
+    params.push(`%${searchOf(req)}%`);
+    const textParam = params.length;
+    params.push(who.map((m) => m.id));
+    where.push(`(t.category ILIKE $${textParam} OR t.description ILIKE $${textParam} OR t.member_id = ANY($${params.length}::text[]))`);
   }
   params.push(clampInt(req.query.limit, 1, 100, 30));
   const rows = await dbAll(

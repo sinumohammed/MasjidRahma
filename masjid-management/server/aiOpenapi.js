@@ -54,7 +54,7 @@ export const AI_OPENAPI = {
         summary: "Every member's food-duty days in each month of a year - for dates beyond the next 60 days, or one member's days",
         parameters: [
           { name: 'year', in: 'query', required: false, description: 'Year, e.g. 2026 (default this year)', schema: { type: 'integer' } },
-          { name: 'search', in: 'query', required: false, description: 'Part of a member name or member id, to return only matching members', schema: { type: 'string' } },
+          { name: 'search', in: 'query', required: false, description: 'A member name in English letters or Malayalam ("Sinu TK" or "സിനു ടി കെ"), or a member id like MR#001', schema: { type: 'string' } },
         ],
       },
     },
@@ -63,14 +63,17 @@ export const AI_OPENAPI = {
         operationId: 'members',
         summary: 'Members (households): id, name, number of people, rotation or not, active, payment plan',
         parameters: [
-          { name: 'search', in: 'query', required: false, description: 'Part of a member name or member id', schema: { type: 'string' } },
+          { name: 'search', in: 'query', required: false, description: 'A member name in English letters or Malayalam ("Sinu TK" or "സിനു ടി കെ"), or a member id like MR#001', schema: { type: 'string' } },
         ],
       },
     },
     '/ai/pending-dues': {
       get: {
         operationId: 'pending_dues',
-        summary: 'Members who owe dues now (pending payments): amount due, payment frequency, missed months. For a member: only their own, with a note saying so',
+        summary: 'Members who owe dues now (pending payments): amount due, payment frequency, missed months. For a member: only their own, with a note saying so. With search: one member\'s dues ("dues of Sinu TK")',
+        parameters: [
+          { name: 'search', in: 'query', required: false, description: 'A member name in English letters or Malayalam ("Sinu TK" or "സിനു ടി കെ"), or a member id like MR#001', schema: { type: 'string' } },
+        ],
       },
     },
     '/ai/finance-summary': {
@@ -91,7 +94,7 @@ export const AI_OPENAPI = {
           { name: 'startDate', in: 'query', required: false, description: 'First day YYYY-MM-DD', schema: date() },
           { name: 'endDate', in: 'query', required: false, description: 'Last day YYYY-MM-DD', schema: date() },
           { name: 'type', in: 'query', required: false, description: 'Only income or only expense', schema: { type: 'string', enum: ['income', 'expense'] } },
-          { name: 'search', in: 'query', required: false, description: 'Part of a category, description or member name', schema: { type: 'string' } },
+          { name: 'search', in: 'query', required: false, description: 'A member name (English letters or Malayalam) or member id, or words in the category or description', schema: { type: 'string' } },
           { name: 'limit', in: 'query', required: false, description: 'How many, 1-100 (default 30)', schema: { type: 'integer' } },
         ],
       },
