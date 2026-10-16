@@ -26,7 +26,7 @@ jobs:
       - name: Food-day-before reminder
         run: |
           curl -sf --max-time 60 --retry 2 --retry-connrefused --retry-delay 5 \
-            -X POST "https://angular-session.onrender.com/api/push/run-daily-check" \
+            -X POST "https://masjid-management-omega.vercel.app/api/push/run-daily-check" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
 
       # Only on the evening schedule (or a manual run) - this job isn't
@@ -37,5 +37,5 @@ jobs:
         if: github.event_name != 'schedule' || github.event.schedule == '27 11 * * *'
         run: |
           curl -sf --max-time 60 --retry 2 --retry-connrefused --retry-delay 5 \
-            -X POST "https://angular-session.onrender.com/api/push/run-monthly-dues-check" \
+            -X POST "https://masjid-management-omega.vercel.app/api/push/run-monthly-dues-check" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

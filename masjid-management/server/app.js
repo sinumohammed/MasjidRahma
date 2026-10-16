@@ -3155,7 +3155,7 @@ app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_ASK_KEY}` },
       body: JSON.stringify({ question, conversationId: conversationFor(req, chatId), ...mode, user: { token: aiUserToken(req.user) } }),
-      // The AI may wait for this server's own /api/ai/* calls; a cold Render start is ~50 s.
+      // The AI may wait for this server's own /api/ai/* calls (a cold start of this server).
       signal: AbortSignal.timeout(120000),
     });
     const data = await aiRes.json().catch(() => ({}));

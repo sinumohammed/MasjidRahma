@@ -8,11 +8,12 @@ This repo is the parent of a single app, `masjid-management/`, a full-stack fina
 
 - `masjid-management/` — React + TypeScript + Vite frontend
 - `masjid-management/server/` — Express + Postgres backend
-- `render.yaml` (repo root) — Render Blueprint for the backend; `rootDir: masjid-management/server`
+- `masjid-management/api/index.js` + `masjid-management/vercel.json` — the backend's production entry: one Vercel Function wrapping the Express app in `server/app.js`, all `/api/*` routed to it
+- `render.yaml` (repo root) — Render Blueprint from before the backend moved to Vercel (2026-10); kept only as a fallback until the Render service is deleted
 - `DEPLOYMENT.md` — live production URLs, env vars, redeploy commands, troubleshooting log
 - `MASJID_APP_DOCUMENTATION.md` — API/schema/component reference
 
-Read `DEPLOYMENT.md` before touching hosting/env config — it documents the actual deployed state (Vercel + Render + Neon), not just intent.
+Read `DEPLOYMENT.md` before touching hosting/env config — it documents the actual deployed state (Vercel + Neon), not just intent.
 
 ## Commands
 
@@ -54,6 +55,6 @@ Backend requires a `.env` (see `server/.env.example`): `DATABASE_URL` (Postgres/
 
 ## Deployment
 
-Production stack: Vercel (frontend, static Vite build) + Render (backend, free Web Service) + Neon (Postgres, free tier). Full details, live URLs, and required env vars are in `DEPLOYMENT.md` — check it first rather than re-deriving the setup. Notably:
-- Backend auto-deploys from GitHub pushes to `main` (Render webhook already configured).
-- Frontend also auto-deploys from GitHub pushes to `main` (Vercel's GitHub integration, Root Directory = `masjid-management`) — a plain `git push` to `main` is enough to ship both sides; the manual `vercel --prod` path in `DEPLOYMENT.md` is now just a fallback, not the normal flow.
+Production stack: one Vercel project (frontend static Vite build + the backend as a serverless function at `/api/*`, same setup as the KMCC app) + Neon (Postgres, free tier). Full details, live URLs, and required env vars are in `DEPLOYMENT.md` — check it first rather than re-deriving the setup. Notably:
+- Frontend and backend auto-deploy together from GitHub pushes to `main` (Vercel's GitHub integration, Root Directory = `masjid-management`) — a plain `git push` to `main` is enough to ship both sides; the manual `vercel --prod` path in `DEPLOYMENT.md` is now just a fallback, not the normal flow.
+- Backend code must stay serverless-safe: no in-process timers or schedulers (reminders come from the GitHub Actions cron), and work after `res.json()` goes through `runInBackground()` (`waitUntil` on Vercel), or it can be cut off. Never add files directly under `masjid-management/api/` besides `index.js` - each one becomes its own function.
