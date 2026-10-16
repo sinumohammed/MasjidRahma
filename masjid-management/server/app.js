@@ -3024,6 +3024,16 @@ const AI_ASK_URL = process.env.AI_ASK_URL;
 const AI_ASK_KEY = process.env.AI_ASK_KEY;
 const CHAT_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const conversationFor = (req, chatId) => (req.user ? `u-${req.user.id}-${chatId}` : `g-${chatId}`).slice(0, 100);
+// Who is asking, for the AI service's usage dashboard (its Command Center):
+// the member code ("member:MR001"), "admin", or for a visitor a short code
+// made from the IP with a secret - the same for one visitor, but not the IP.
+// Never a name.
+function aiUserRef(req) {
+  if (!req.user) return `guest:${crypto.createHmac('sha256', AI_USER_SECRET).update(String(req.ip ?? '')).digest('hex').slice(0, 10)}`;
+  if (req.user.isAdmin && !req.user.memberId) return 'admin';
+  const code = String(req.user.username ?? req.user.id).replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60);
+  return `member:${code || req.user.id}`;
+}
 const limitSetting = (name, fallback) => {
   const n = Number(process.env[name] ?? fallback);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
@@ -3154,7 +3164,7 @@ app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
     const aiRes = await fetch(AI_ASK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_ASK_KEY}` },
-      body: JSON.stringify({ question, conversationId: conversationFor(req, chatId), ...mode, user: { token: aiUserToken(req.user) } }),
+      body: JSON.stringify({ question, conversationId: conversationFor(req, chatId), ...mode, user: { token: aiUserToken(req.user), ref: aiUserRef(req) } }),
       // The AI may wait for this server's own /api/ai/* calls (a cold start of this server).
       signal: AbortSignal.timeout(120000),
     });
