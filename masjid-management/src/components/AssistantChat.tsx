@@ -1,6 +1,25 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Input, Button, Alert, Tag, Typography, Popconfirm, Select, Switch, Tooltip, message } from 'antd';
-import { RobotOutlined, SendOutlined, ClearOutlined, AudioOutlined, CheckOutlined, CloseOutlined, HistoryOutlined } from '@ant-design/icons';
+import { Input, Button, Alert, Tag, Popconfirm, Select, Switch, Tooltip, ConfigProvider, message } from 'antd';
+import {
+  SendOutlined,
+  ClearOutlined,
+  AudioOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  HistoryOutlined,
+  CoffeeOutlined,
+  CalendarOutlined,
+  ScheduleOutlined,
+  WalletOutlined,
+  FileSearchOutlined,
+  CreditCardOutlined,
+  NotificationOutlined,
+  BarChartOutlined,
+  PieChartOutlined,
+  TeamOutlined,
+  BankOutlined,
+} from '@ant-design/icons';
+import AssistantIcon from './AssistantIcon';
 import {
   askAssistant,
   clearAssistantChat,
@@ -120,17 +139,20 @@ function loadVoiceLanguage(): string {
   }
 }
 
-// "**bold**" -> <strong>; lines starting with "- " or "1. " keep their own line.
+// "**bold**" -> <strong>; lines starting with "- " or "* " become bullets,
+// "1. " keeps its number, each on its own line.
 // The AI marks each fact with its source number ("... today [1]."); here the
 // source is shown once under the answer instead ("From: Masjid records"), so
 // the numbers are left out of the text.
 function formatAnswer(text: string): ReactNode[] {
-  return text.replace(/\s*(\[\d+\]|【\d+】)/g, '').split('\n').map((line, i) => {
+  return text.replace(/\s*(\[\d+\]|【\d+】)/g, '').split('\n').map((raw, i) => {
+    const bullet = /^\s*[-*]\s+/.test(raw);
+    const line = bullet ? raw.replace(/^\s*[-*]\s+/, '') : raw;
     const parts = line.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
       part.startsWith('**') && part.endsWith('**') ? <strong key={j}>{part.slice(2, -2)}</strong> : part
     );
     return (
-      <div key={i} className={/^\s*([-*]|\d+\.)\s/.test(line) ? 'assistant-line assistant-list-line' : 'assistant-line'}>
+      <div key={i} className={bullet ? 'assistant-line assistant-bullet' : /^\s*\d+\.\s/.test(line) ? 'assistant-line assistant-list-line' : 'assistant-line'}>
         {parts.length && line.trim() ? parts : ' '}
       </div>
     );
@@ -143,8 +165,46 @@ function sourceLabel(s: AssistantSource): string {
   return s.source === 'masjid API' ? 'Masjid records' : s.section ?? s.source;
 }
 
-// `embedded`: inside the floating chat's drawer (it has its own title).
-export default function AssistantChat({ embedded = false }: { embedded?: boolean }) {
+// Ready questions, in Malayalam - most members ask in Malayalam, and the
+// assistant answers in the language of the question. Each one is what that
+// role can see: a guest only the food-duty schedule, a member their own dues
+// and payments, the admin the accounts and everyone's dues.
+interface Suggestion {
+  icon: ReactNode;
+  tone: 'teal' | 'amber' | 'indigo' | 'rose' | 'sky' | 'violet';
+  label: string;
+  question: string;
+}
+const TODAY_DUTY: Suggestion = { icon: <CoffeeOutlined />, tone: 'teal', label: 'ഇന്നത്തെ ഭക്ഷണ ഡ്യൂട്ടി', question: 'ഇന്ന് ഭക്ഷണം നൽകുന്നത് ആരാണ്?' };
+const GUEST_SUGGESTIONS: Suggestion[] = [
+  TODAY_DUTY,
+  { icon: <CalendarOutlined />, tone: 'amber', label: 'നാളത്തെ ഡ്യൂട്ടി', question: 'നാളെ ഭക്ഷണ ഡ്യൂട്ടി ആർക്കാണ്?' },
+  { icon: <ScheduleOutlined />, tone: 'indigo', label: 'ഈ ആഴ്ചത്തെ ഡ്യൂട്ടി', question: 'ഈ ആഴ്ചത്തെ ഭക്ഷണ ഡ്യൂട്ടി ലിസ്റ്റ് കാണിക്കൂ' },
+  { icon: <CalendarOutlined />, tone: 'sky', label: 'വെള്ളിയാഴ്ച ഡ്യൂട്ടി', question: 'ഈ വെള്ളിയാഴ്ച ഭക്ഷണ ഡ്യൂട്ടി ആർക്കാണ്?' },
+];
+const MEMBER_SUGGESTIONS: Suggestion[] = [
+  { icon: <WalletOutlined />, tone: 'rose', label: 'എന്റെ ബാക്കി തുക', question: 'എനിക്ക് അടയ്ക്കാൻ ബാക്കിയുള്ള തുക എത്ര?' },
+  { icon: <CalendarOutlined />, tone: 'amber', label: 'എന്റെ അടുത്ത ഡ്യൂട്ടി', question: 'എന്റെ അടുത്ത ഭക്ഷണ ഡ്യൂട്ടി എന്നാണ്?' },
+  { icon: <FileSearchOutlined />, tone: 'violet', label: 'കഴിഞ്ഞ വർഷത്തെ ബാക്കി', question: 'കഴിഞ്ഞ വർഷം എനിക്ക് അടയ്ക്കാൻ ബാക്കിയുണ്ടായിരുന്നോ?' },
+  { icon: <CreditCardOutlined />, tone: 'sky', label: 'എന്റെ പേയ്മെന്റുകൾ', question: 'ഞാൻ അവസാനം അടച്ച പേയ്മെന്റുകൾ കാണിക്കൂ' },
+  { icon: <NotificationOutlined />, tone: 'indigo', label: 'പുതിയ അറിയിപ്പ്', question: 'ഏറ്റവും പുതിയ അറിയിപ്പ് എന്താണ്?' },
+  TODAY_DUTY,
+];
+const ADMIN_SUGGESTIONS: Suggestion[] = [
+  { icon: <BarChartOutlined />, tone: 'indigo', label: 'കഴിഞ്ഞ മാസത്തെ കണക്ക്', question: 'കഴിഞ്ഞ മാസത്തെ ആകെ വരവും ചെലവും എത്ര?' },
+  { icon: <PieChartOutlined />, tone: 'amber', label: 'ഈ മാസത്തെ ചെലവ്', question: 'ഈ മാസം ഇതുവരെ എത്ര ചെലവായി, ഏതൊക്കെ ഇനങ്ങളിൽ?' },
+  { icon: <TeamOutlined />, tone: 'rose', label: 'ബാക്കിയുള്ള അംഗങ്ങൾ', question: 'വരിസംഖ്യ അടയ്ക്കാൻ ബാക്കിയുള്ള അംഗങ്ങൾ ആരൊക്കെ, എത്ര വീതം?' },
+  { icon: <FileSearchOutlined />, tone: 'violet', label: 'കഴിഞ്ഞ വർഷത്തെ ബാക്കി', question: 'കഴിഞ്ഞ വർഷത്തെ വരിസംഖ്യ ബാക്കിയുള്ളവർ ആരൊക്കെ?' },
+  { icon: <BankOutlined />, tone: 'sky', label: 'ബാങ്ക് ബാലൻസ്', question: 'ബാങ്ക് അക്കൗണ്ടുകളിലെ ഇപ്പോഴത്തെ ബാലൻസ് എത്ര?' },
+  TODAY_DUTY,
+];
+
+// The assistant's own accent - the green of its icon - inside the chat only;
+// the rest of the app keeps its theme (light and dark come from the app).
+const CHAT_THEME = { token: { colorPrimary: '#0f766e' } };
+
+// `embedded`: inside the floating chat's drawer; `onClose` closes it.
+export default function AssistantChat({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void }) {
   const { isAdmin, isLoggedIn, username } = useAuth();
   const account = isLoggedIn ? username : null;
   const [chatId, setChatId] = useState(() => chatIdFor(isLoggedIn));
@@ -198,15 +258,12 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
   // also scrolled the whole page on phones.
   useEffect(() => {
     saveMessages(account, messages);
+    // An empty chat shows the welcome from its top.
     const list = listRef.current;
-    if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+    if (list && messages.length) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
   }, [messages, account, asking]);
 
-  const suggestions = !isLoggedIn
-    ? ['Who supplies food today?', 'Who is on food duty tomorrow?', 'Who is on duty this Friday?', 'Which days is MR#001 on duty this month?']
-    : isAdmin
-      ? ['Who supplies food today?', 'Which members have pending dues?', 'How much did we spend this month?', 'What are the bank balances?']
-      : ['Who supplies food today?', 'When is my next food duty?', 'Do I have any pending dues?', 'What is the latest announcement?'];
+  const suggestions = !isLoggedIn ? GUEST_SUGGESTIONS : isAdmin ? ADMIN_SUGGESTIONS : MEMBER_SUGGESTIONS;
 
   const ask = async (question: string) => {
     const q = question.trim();
@@ -248,17 +305,17 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
   // "3 of 4 left today" - nothing when there is no limit (the admin).
   const quotaPill = quota?.limit ? (
     <span className={`assistant-quota${noneLeft ? ' is-out' : quota.remaining! <= 1 ? ' is-low' : ''}`} title="Questions left today">
-      {noneLeft ? 'None left today' : `${quota.remaining} of ${quota.limit} left today`}
+      {noneLeft ? 'None left today' : `${quota.remaining} of ${quota.limit} left`}
     </span>
   ) : null;
 
   const askingAsText = askingAs
     ? askingAs.role === 'admin'
-      ? 'Asking as Admin'
+      ? 'Admin · everything'
       : askingAs.role === 'member'
-        ? `Asking as ${askingAs.username}`
-        : 'Guest - log in for more'
-    : '';
+        ? `${askingAs.username} · your own dues`
+        : 'Guest · log in for more'
+    : 'Masjid Rahma';
 
   const setLanguage = (value: string) => {
     setVoiceLanguage(value);
@@ -272,40 +329,59 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
   const showVoice = voiceSupported();
 
   return (
+    <ConfigProvider theme={CHAT_THEME}>
     <div
       ref={shellRef}
       // Little room (a phone with the keyboard open): only the composer below the messages.
       className={`assistant-shell${embedded ? ' assistant-embedded' : ''}${fitHeight && fitHeight < 440 ? ' is-tight' : ''}`}
       style={fitHeight ? { height: fitHeight } : undefined}
     >
-      {/* Header: who answers, how many questions are left, clear. In the
-          drawer the title is the drawer's own. */}
+      {/* Header: who answers, as whom, questions left, clear, close. */}
       <div className="assistant-head">
-        {!embedded && (
-          <span className="assistant-head-avatar" aria-hidden>
-            <RobotOutlined />
-          </span>
-        )}
+        <span className="assistant-head-avatar">
+          <AssistantIcon size={embedded ? 36 : 40} />
+          <span className="assistant-online" aria-hidden />
+        </span>
         <div className="assistant-head-text">
-          {!embedded && <div className="assistant-head-title">Assistant</div>}
-          {askingAsText && <div className="assistant-head-sub">{askingAsText}</div>}
+          <div className="assistant-head-title">
+            Masjid Assistant <span className="assistant-ai-badge">AI</span>
+          </div>
+          <div className="assistant-head-sub">{askingAsText}</div>
         </div>
         {quotaPill}
         {clearButton}
+        {onClose && <Button type="text" shape="circle" icon={<CloseOutlined />} onClick={onClose} aria-label="Close the assistant" />}
       </div>
 
       <div className="assistant-messages" ref={listRef}>
         {messages.length === 0 && (
           <div className="assistant-empty">
-            <span className="assistant-empty-avatar" aria-hidden>
-              <RobotOutlined />
+            <span className="assistant-empty-avatar">
+              <AssistantIcon size={64} />
             </span>
-            <div className="assistant-empty-title">How can I help?</div>
-            <Typography.Paragraph type="secondary" className="assistant-empty-text">
+            <div className="assistant-empty-greeting">അസ്സലാമു അലൈക്കും</div>
+            <div className="assistant-empty-title">How can I help you today?</div>
+            <div className="assistant-empty-text">
               {!isLoggedIn
                 ? 'Ask who is on food duty today, tomorrow or any day this year. Log in to ask about dues and more.'
-                : `Ask about the food-duty schedule, members, dues${isAdmin ? ', income and expenses' : ''} or announcements.${isAdmin ? '' : ' You see your own dues and payments only.'}`}
-            </Typography.Paragraph>
+                : isAdmin
+                  ? 'Accounts, dues, members, the food-duty schedule and announcements - ask in Malayalam or English.'
+                  : 'Your dues and payments, your food-duty days and announcements - ask in Malayalam or English.'}
+            </div>
+            <div className="assistant-chip-label">ചോദിച്ചു നോക്കൂ</div>
+            <div className="assistant-prompts">
+              {suggestions.map((s) => (
+                <button type="button" key={s.label} className={`assistant-prompt tone-${s.tone}`} onClick={() => ask(s.question)} disabled={busy || noneLeft}>
+                  <span className="assistant-prompt-icon" aria-hidden>
+                    {s.icon}
+                  </span>
+                  <span className="assistant-prompt-text">
+                    <span className="assistant-prompt-label">{s.label}</span>
+                    <span className="assistant-prompt-question">{s.question}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
             {recent.length > 0 && (
               <>
                 <div className="assistant-chip-label">
@@ -320,14 +396,6 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
                 </div>
               </>
             )}
-            <div className="assistant-chip-label">Try asking</div>
-            <div className="assistant-chips">
-              {suggestions.filter((s) => !recent.includes(s)).map((s) => (
-                <button type="button" key={s} className="assistant-chip" onClick={() => ask(s)} disabled={busy || noneLeft}>
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         )}
         {messages.map((m, i) =>
@@ -337,8 +405,8 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
             </div>
           ) : (
             <div key={i} className="assistant-row is-assistant">
-              <span className="assistant-avatar" aria-hidden>
-                <RobotOutlined />
+              <span className="assistant-avatar">
+                <AssistantIcon size={30} />
               </span>
               <div className="assistant-bubble is-assistant">
                 {m.error ? <Alert type="warning" showIcon message={m.text} /> : formatAnswer(m.text)}
@@ -358,13 +426,16 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
         )}
         {asking && (
           <div className="assistant-row is-assistant" aria-live="polite">
-            <span className="assistant-avatar" aria-hidden>
-              <RobotOutlined />
+            <span className="assistant-avatar">
+              <AssistantIcon size={30} />
             </span>
             <div className="assistant-bubble is-assistant assistant-typing" aria-label="Looking it up">
-              <span />
-              <span />
-              <span />
+              <span className="assistant-typing-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+              <span className="assistant-typing-text">Checking the masjid records…</span>
             </div>
           </div>
         )}
@@ -372,14 +443,26 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
 
       {/* Bottom, always in view: recent questions, the limit note, the composer. */}
       <div className="assistant-bottom">
-        {messages.length > 0 && recent.length > 0 && voice.status === 'idle' && !noneLeft && (
-          <div className="assistant-recent-row" aria-label="Your recent questions">
-            <HistoryOutlined className="assistant-recent-icon" />
-            {recent.map((s) => (
-              <button type="button" key={s} className="assistant-chip is-recent" onClick={() => ask(s)} disabled={busy}>
-                {s}
+        {/* After the first question: the ready questions as one scrolling row
+            of chips, then the user's own recent ones. */}
+        {messages.length > 0 && voice.status === 'idle' && !noneLeft && (
+          <div className="assistant-recent-row" aria-label="Quick questions">
+            {suggestions.map((s) => (
+              <button type="button" key={s.label} className={`assistant-chip is-quick tone-${s.tone}`} onClick={() => ask(s.question)} disabled={busy} title={s.question}>
+                <span className="assistant-chip-icon" aria-hidden>
+                  {s.icon}
+                </span>
+                {s.label}
               </button>
             ))}
+            {recent
+              .filter((r) => !suggestions.some((s) => s.question === r))
+              .map((r) => (
+                <button type="button" key={r} className="assistant-chip is-recent" onClick={() => ask(r)} disabled={busy} title={r}>
+                  <HistoryOutlined className="assistant-chip-icon" />
+                  {r}
+                </button>
+              ))}
           </div>
         )}
         {noneLeft && (
@@ -413,7 +496,7 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
                     ask(draft);
                   }
                 }}
-                placeholder={voice.status === 'transcribing' ? 'Turning your words into text…' : noneLeft ? 'No questions left today' : 'Ask a question…'}
+                placeholder={voice.status === 'transcribing' ? 'Turning your words into text…' : noneLeft ? 'No questions left today' : 'ചോദിക്കൂ… / Ask anything'}
                 autoSize={{ minRows: 1, maxRows: 4 }}
                 maxLength={2000}
                 disabled={busy || noneLeft}
@@ -444,37 +527,41 @@ export default function AssistantChat({ embedded = false }: { embedded?: boolean
             </>
           )}
         </div>
-        {showVoice && (
-          <div className="assistant-meta">
-            <label className="assistant-auto-send">
-              <Switch
+        <div className="assistant-meta">
+          {showVoice && (
+            <>
+              <label className="assistant-auto-send">
+                <Switch
+                  size="small"
+                  checked={autoSend}
+                  onChange={(on) => {
+                    setAutoSend(on);
+                    try {
+                      window.localStorage.setItem(AUTO_SEND_KEY, on ? 'on' : 'off');
+                    } catch {
+                      // not kept
+                    }
+                  }}
+                  aria-label="Send spoken questions automatically"
+                />
+                <span>Auto-send</span>
+              </label>
+              <span>Voice</span>
+              <Select
                 size="small"
-                checked={autoSend}
-                onChange={(on) => {
-                  setAutoSend(on);
-                  try {
-                    window.localStorage.setItem(AUTO_SEND_KEY, on ? 'on' : 'off');
-                  } catch {
-                    // not kept
-                  }
-                }}
-                aria-label="Send spoken questions automatically"
+                value={voiceLanguage}
+                onChange={setLanguage}
+                options={VOICE_LANGUAGES}
+                popupMatchSelectWidth={false}
+                variant="borderless"
+                aria-label="Voice language"
               />
-              <span>Auto-send</span>
-            </label>
-            <span>Voice</span>
-            <Select
-              size="small"
-              value={voiceLanguage}
-              onChange={setLanguage}
-              options={VOICE_LANGUAGES}
-              popupMatchSelectWidth={false}
-              variant="borderless"
-              aria-label="Voice language"
-            />
-          </div>
-        )}
+            </>
+          )}
+          {!showVoice && <span className="assistant-disclaimer">Answers come from the masjid records - check important figures.</span>}
+        </div>
       </div>
     </div>
+    </ConfigProvider>
   );
 }

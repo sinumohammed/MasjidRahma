@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Layout, Menu, Button, Dropdown, Badge, ConfigProvider, Drawer, FloatButton, theme as antdTheme } from 'antd';
+import { Layout, Menu, Button, Dropdown, Badge, ConfigProvider, Drawer, theme as antdTheme } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -14,7 +14,6 @@ import {
   LogoutOutlined,
   HistoryOutlined,
   BankOutlined,
-  RobotOutlined,
 } from '@ant-design/icons';
 import Dashboard, { type TransactionFilter } from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
@@ -28,6 +27,7 @@ import SettingsPage from './components/SettingsPage';
 import Announcements from './components/Announcements';
 import MyNotifications from './components/MyNotifications';
 import AssistantChat from './components/AssistantChat';
+import AssistantIcon from './components/AssistantIcon';
 import AuthModal from './components/AuthModal';
 import { useSettings } from './context/SettingsContext';
 import { useAuth } from './context/AuthContext';
@@ -348,7 +348,7 @@ function App() {
       ? [
           {
             key: 'assistant',
-            icon: <RobotOutlined />,
+            icon: <span className="anticon"><AssistantIcon size={18} /></span>,
             label: 'Assistant',
           },
         ]
@@ -606,27 +606,21 @@ function App() {
     {/* The assistant from any screen, logged in or not - except its own page. */}
     {assistantAvailable && activeKey !== 'assistant' && (
       <>
-        <FloatButton
-          icon={<RobotOutlined />}
-          type="primary"
-          tooltip="Ask the assistant"
-          aria-label="Ask the assistant"
-          onClick={() => setAssistantOpen(true)}
-        />
+        <button type="button" className="assistant-launcher" onClick={() => setAssistantOpen(true)} aria-label="Ask the masjid assistant" title="Ask the masjid assistant">
+          <AssistantIcon size={38} bare />
+          <span className="assistant-launcher-label">Ask Assistant</span>
+        </button>
         <Drawer
-          title={
-            <span>
-              <RobotOutlined /> Assistant
-            </span>
-          }
+          title={null}
+          closable={false}
           open={assistantOpen}
           onClose={() => setAssistantOpen(false)}
           placement="right"
-          size={isMobile ? '100%' : 440}
+          size={isMobile ? '100%' : 460}
           destroyOnHidden
           styles={{ body: { padding: 0, overflow: 'hidden' } }}
         >
-          <AssistantChat embedded />
+          <AssistantChat embedded onClose={() => setAssistantOpen(false)} />
         </Drawer>
       </>
     )}
