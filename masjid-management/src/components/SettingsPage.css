@@ -124,3 +124,42 @@
   min-width: 0;
   text-align: left;
 }
+
+/* About the masjid (AboutSettingsCard) */
+.about-admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.about-admin-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.about-admin-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--m-border);
+}
+
+.about-admin-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.about-admin-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.about-admin-photo {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}

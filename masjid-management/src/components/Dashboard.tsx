@@ -31,7 +31,7 @@ import {
 import ChartsPanel from './ChartsPanel';
 import TodayAssignmentCard from './Members/TodayAssignmentCard';
 import ProfileView from './Members/ProfileView';
-import InlineLoginForm from './InlineLoginForm';
+import AboutMasjid from './About/AboutMasjid';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
@@ -63,6 +63,7 @@ interface DashboardProps {
   onOpenMyNotifications?: () => void;
   unreadAnnouncements?: number;
   unreadMyNotifications?: number;
+  onLogin?: () => void;
 }
 
 export default function Dashboard({
@@ -74,6 +75,7 @@ export default function Dashboard({
   onOpenMyNotifications,
   unreadAnnouncements = 0,
   unreadMyNotifications = 0,
+  onLogin,
 }: DashboardProps) {
   const { currencySymbol } = useSettings();
   const { isAdmin, isLoggedIn } = useAuth();
@@ -211,7 +213,8 @@ export default function Dashboard({
           </Col>
         </Row>
 
-        {!isAdmin && !isLoggedIn && <InlineLoginForm />}
+        {/* A guest: the masjid and its people, with a small log-in invitation. */}
+        {!isAdmin && !isLoggedIn && <AboutMasjid variant="home" onLogin={onLogin} />}
 
         {!isAdmin && isLoggedIn && (
           <div className="notify-split-card">

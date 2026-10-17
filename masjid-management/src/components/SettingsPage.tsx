@@ -25,6 +25,7 @@ import { useAuth } from '../context/AuthContext';
 import { urlBase64ToUint8Array } from '../utils/push';
 import AssistantSettingsCard from './AssistantSettingsCard';
 import McpTokensCard from './McpTokensCard';
+import AboutSettingsCard from './About/AboutSettingsCard';
 import './SettingsPage.css';
 
 function downloadFile(filename: string, content: string, mimeType: string) {
@@ -399,6 +400,7 @@ export default function SettingsPage() {
         />
       )}
 
+      {isAdmin && <AboutSettingsCard />}
       {isAdmin && <AssistantSettingsCard />}
       {isAdmin && <McpTokensCard />}
 

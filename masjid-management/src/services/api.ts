@@ -926,3 +926,58 @@ export const revokeMcpToken = async (id: string): Promise<void> => {
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Failed to revoke the token');
 };
+
+// About the masjid: its story and the people behind it (shown to everyone,
+// edited by the admin in Settings).
+export type PersonGroup = 'leadership' | 'founders';
+export interface MasjidPerson {
+  id: string;
+  group: PersonGroup;
+  name: string;
+  role: string;
+  since: string;
+  photoUrl: string | null;
+}
+export interface AboutText {
+  story: string;
+  founded: string;
+  address: string;
+  tagline: string;
+}
+export interface About extends AboutText {
+  people: MasjidPerson[];
+}
+// "/api/about/people/<id>/photo?v=..." from the server -> a URL this frontend can load.
+export const aboutPhotoUrl = (path: string) => `${API_BASE_URL}${path.replace(/^\/api/, '')}`;
+
+async function aboutRequest<T>(path: string, init: RequestInit, failure: string): Promise<T> {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, init);
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || failure);
+  return result as T;
+}
+
+export const getAbout = () => aboutRequest<About>('/about', {}, 'Failed to load About the masjid');
+
+export const saveAboutText = (text: Partial<AboutText>) =>
+  aboutRequest<AboutText>('/admin/about', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(text) }, 'Failed to save');
+
+// photo: a data URL, null to remove it, undefined to keep it.
+export interface PersonInput {
+  name?: string;
+  role?: string;
+  since?: string;
+  group?: PersonGroup;
+  photo?: string | null;
+}
+export const addPerson = (p: PersonInput) =>
+  aboutRequest<{ people: MasjidPerson[] }>('/admin/about/people', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(p) }, 'Failed to add');
+
+export const updatePerson = (id: string, p: PersonInput) =>
+  aboutRequest<{ people: MasjidPerson[] }>(`/admin/about/people/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(p) }, 'Failed to save');
+
+export const deletePerson = (id: string) =>
+  aboutRequest<{ people: MasjidPerson[] }>(`/admin/about/people/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { ...authHeaders() } }, 'Failed to remove');
+
+export const reorderPeople = (ids: string[]) =>
+  aboutRequest<{ people: MasjidPerson[] }>('/admin/about/people-order', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ ids }) }, 'Failed to save the order');

@@ -76,7 +76,9 @@ app.set('trust proxy', true);
 
 // Middleware
 app.use(cors(FRONTEND_URL ? { origin: FRONTEND_URL } : {}));
-app.use(express.json());
+// 1 MB: room for a photo in About the masjid (resized in the browser to
+// ~100 KB first); everything else is far smaller.
+app.use(express.json({ limit: '1mb' }));
 
 // Postgres connection (Neon requires SSL; local Postgres typically doesn't)
 const pool = new Pool({
@@ -306,6 +308,23 @@ async function initializeDatabase() {
       hint TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       last_used_at TIMESTAMP
+    )
+  `);
+
+  // About the masjid (Settings, admin; shown to everyone): the people behind
+  // it - founders and today's president, imam, muaddin... - with a photo
+  // each (a data URL, resized in the browser), in the admin's order. The
+  // story, founding year and address are app_settings 'about.*'.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS masjid_people (
+      id TEXT PRIMARY KEY,
+      group_key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT '',
+      since TEXT NOT NULL DEFAULT '',
+      photo TEXT,
+      position INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -2559,6 +2578,156 @@ app.delete('/api/announcements/:id', requireAdmin, async (req, res) => {
 
 // Settings > Help contacts (Masjid Committee / Muaddin / Site Related
 // Queries) - public read (shown to every visitor), admin-only edit.
+// --- About the masjid (public read, admin edit) ---
+const ABOUT_FIELDS = { story: 4000, founded: 30, address: 200, tagline: 160 };
+const PEOPLE_GROUPS = ['leadership', 'founders'];
+const PHOTO_DATA_URL = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+const MAX_PHOTO_CHARS = 700000; // ~500 KB of image
+
+async function aboutText() {
+  const rows = await dbAll("SELECT key, value FROM app_settings WHERE key LIKE 'about.%'");
+  const about = Object.fromEntries(Object.keys(ABOUT_FIELDS).map((k) => [k, '']));
+  for (const { key, value } of rows) {
+    const k = key.slice('about.'.length);
+    if (k in ABOUT_FIELDS) about[k] = value;
+  }
+  return about;
+}
+
+// The people without their photos: each photo is its own URL, cached by the
+// browser, versioned by updated_at so a new photo shows at once.
+async function aboutPeople() {
+  const rows = await dbAll('SELECT id, group_key, name, role, since, photo IS NOT NULL AS has_photo, updated_at FROM masjid_people ORDER BY position ASC, updated_at ASC');
+  return rows.map((p) => ({
+    id: p.id,
+    group: p.group_key,
+    name: p.name,
+    role: p.role,
+    since: p.since,
+    photoUrl: p.has_photo ? `/api/about/people/${p.id}/photo?v=${new Date(p.updated_at).getTime()}` : null,
+  }));
+}
+
+app.get('/api/about', async (req, res) => {
+  try {
+    res.json({ ...(await aboutText()), people: await aboutPeople() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/about/people/:id/photo', async (req, res) => {
+  try {
+    const row = await dbGet('SELECT photo FROM masjid_people WHERE id = $1', [req.params.id]);
+    const m = row?.photo?.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/);
+    if (!m) return res.status(404).end();
+    res.set('Content-Type', m[1]).set('Cache-Control', 'public, max-age=31536000, immutable').send(Buffer.from(m[2], 'base64'));
+  } catch {
+    res.status(500).end();
+  }
+});
+
+app.put('/api/admin/about', requireAdmin, async (req, res) => {
+  const given = req.body ?? {};
+  for (const [k, max] of Object.entries(ABOUT_FIELDS)) {
+    if (given[k] !== undefined && (typeof given[k] !== 'string' || given[k].length > max)) {
+      return res.status(400).json({ error: `${k}: text up to ${max} characters` });
+    }
+  }
+  try {
+    for (const k of Object.keys(ABOUT_FIELDS).filter((k) => given[k] !== undefined)) {
+      await dbRun(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+        [`about.${k}`, given[k].trim()]
+      );
+    }
+    res.json(await aboutText());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// A person's fields from a request; `photo`: a data URL, null to remove, or
+// left out to keep. Returns { error } or the clean fields.
+function personFields(body, partial) {
+  const out = {};
+  const name = typeof body?.name === 'string' ? body.name.trim() : undefined;
+  if (!partial || name !== undefined) {
+    if (!name || name.length > 80) return { error: 'name: 1-80 characters' };
+    out.name = name;
+  }
+  for (const [k, max] of [['role', 60], ['since', 30]]) {
+    if (body?.[k] !== undefined) {
+      if (typeof body[k] !== 'string' || body[k].trim().length > max) return { error: `${k}: up to ${max} characters` };
+      out[k] = body[k].trim();
+    }
+  }
+  if (body?.group !== undefined || !partial) {
+    if (!PEOPLE_GROUPS.includes(body?.group)) return { error: `group: one of ${PEOPLE_GROUPS.join(', ')}` };
+    out.group_key = body.group;
+  }
+  if (body?.photo !== undefined) {
+    if (body.photo !== null && (typeof body.photo !== 'string' || body.photo.length > MAX_PHOTO_CHARS || !PHOTO_DATA_URL.test(body.photo))) {
+      return { error: 'photo: a JPEG, PNG or WebP image up to about 500 KB' };
+    }
+    out.photo = body.photo;
+  }
+  return out;
+}
+
+app.post('/api/admin/about/people', requireAdmin, async (req, res) => {
+  const f = personFields(req.body, false);
+  if (f.error) return res.status(400).json({ error: f.error });
+  try {
+    const last = await dbGet('SELECT COALESCE(MAX(position), -1) AS p FROM masjid_people');
+    await dbRun(
+      'INSERT INTO masjid_people (id, group_key, name, role, since, photo, position) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [uuidv4(), f.group_key, f.name, f.role ?? '', f.since ?? '', f.photo ?? null, Number(last.p) + 1]
+    );
+    res.status(201).json({ people: await aboutPeople() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/about/people/:id', requireAdmin, async (req, res) => {
+  const f = personFields(req.body, true);
+  if (f.error) return res.status(400).json({ error: f.error });
+  const keys = Object.keys(f);
+  if (!keys.length) return res.status(400).json({ error: 'nothing to change' });
+  try {
+    const sets = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
+    const result = await pool.query(`UPDATE masjid_people SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [req.params.id, ...keys.map((k) => f[k])]);
+    if (!result.rowCount) return res.status(404).json({ error: 'no such person' });
+    res.json({ people: await aboutPeople() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/about/people/:id', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM masjid_people WHERE id = $1', [req.params.id]);
+    if (!result.rowCount) return res.status(404).json({ error: 'no such person' });
+    res.json({ people: await aboutPeople() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// The order on the page: every id, first to last.
+app.put('/api/admin/about/people-order', requireAdmin, async (req, res) => {
+  const ids = req.body?.ids;
+  if (!Array.isArray(ids) || !ids.every((x) => typeof x === 'string')) return res.status(400).json({ error: 'ids: a list of person ids' });
+  try {
+    for (const [i, id] of ids.entries()) await dbRun('UPDATE masjid_people SET position = $1 WHERE id = $2', [i, id]);
+    res.json({ people: await aboutPeople() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/contacts', async (req, res) => {
   try {
     const contacts = await dbAll('SELECT * FROM contacts ORDER BY group_key, position ASC');

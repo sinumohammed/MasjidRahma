@@ -5,7 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import BrandMark from './BrandMark';
 import './InlineLoginForm.css';
 
-export default function InlineLoginForm() {
+// `onDone`: after a successful log-in (the pop-up closes itself).
+export default function InlineLoginForm({ onDone }: { onDone?: () => void }) {
   const { hasAdmin, login, setupAccount } = useAuth();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -22,6 +23,7 @@ export default function InlineLoginForm() {
         message.success('Logged in');
       }
       form.resetFields();
+      onDone?.();
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Authentication failed');
     } finally {
@@ -44,7 +46,7 @@ export default function InlineLoginForm() {
           name="username"
           rules={[{ required: true, message: 'Please enter a username' }]}
         >
-          <Input prefix={<UserOutlined />} placeholder={isSetupMode ? "Username" : "e.g. MR#012"} autoComplete="username" />
+          <Input prefix={<UserOutlined />} placeholder={isSetupMode ? "Username" : "e.g. MR#012"} autoComplete="username" autoFocus />
         </Form.Item>
         <Form.Item
           label="Password"

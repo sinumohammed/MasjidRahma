@@ -17,6 +17,7 @@ import {
   HomeOutlined,
   AppstoreOutlined,
   LoginOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import Dashboard, { type TransactionFilter } from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
@@ -30,6 +31,7 @@ import SettingsPage from './components/SettingsPage';
 import Announcements from './components/Announcements';
 import MyNotifications from './components/MyNotifications';
 import AssistantChat from './components/AssistantChat';
+import AboutMasjid from './components/About/AboutMasjid';
 import AssistantIcon from './components/AssistantIcon';
 import AuthModal from './components/AuthModal';
 import BrandMark from './components/BrandMark';
@@ -89,6 +91,7 @@ const PAGE_TITLES: Record<string, string> = {
   settings: 'Settings',
   announcements: 'Announcements',
   'my-notifications': 'My Notifications',
+  about: 'About Masjid Rahma',
 };
 
 function App() {
@@ -373,6 +376,11 @@ function App() {
           },
         ]
       : []),
+    {
+      key: 'about',
+      icon: <InfoCircleOutlined />,
+      label: 'About',
+    },
     ...(isAdmin
       ? [
           {
@@ -466,6 +474,7 @@ function App() {
             onOpenMyNotifications={openMyNotifications}
             unreadAnnouncements={unreadAnnouncements}
             unreadMyNotifications={unreadMyNotifications}
+            onLogin={() => setAuthModalOpen(true)}
           />
         );
       case 'transactions':
@@ -484,6 +493,7 @@ function App() {
             onOpenMyNotifications={openMyNotifications}
             unreadAnnouncements={unreadAnnouncements}
             unreadMyNotifications={unreadMyNotifications}
+            onLogin={() => setAuthModalOpen(true)}
           />
         );
       case 'banks':
@@ -499,6 +509,7 @@ function App() {
             onOpenMyNotifications={openMyNotifications}
             unreadAnnouncements={unreadAnnouncements}
             unreadMyNotifications={unreadMyNotifications}
+            onLogin={() => setAuthModalOpen(true)}
           />
         );
       case 'profile':
@@ -516,6 +527,7 @@ function App() {
             onOpenMyNotifications={openMyNotifications}
             unreadAnnouncements={unreadAnnouncements}
             unreadMyNotifications={unreadMyNotifications}
+            onLogin={() => setAuthModalOpen(true)}
           />
         );
       case 'my-notifications':
@@ -531,6 +543,7 @@ function App() {
             onOpenMyNotifications={openMyNotifications}
             unreadAnnouncements={unreadAnnouncements}
             unreadMyNotifications={unreadMyNotifications}
+            onLogin={() => setAuthModalOpen(true)}
           />
         );
       case 'members':
@@ -541,6 +554,8 @@ function App() {
         return <YearlyScheduleView />;
       case 'settings':
         return isLoggedIn ? <SettingsPage /> : <Dashboard />;
+      case 'about':
+        return <AboutMasjid />;
       case 'assistant':
         return assistantAvailable ? <AssistantChat /> : <Dashboard />;
       default:

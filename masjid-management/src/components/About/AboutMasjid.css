@@ -1,0 +1,230 @@
+.about-masjid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.about-intro,
+.about-people,
+.about-login {
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
+  border-radius: 20px;
+  box-shadow: var(--m-shadow);
+}
+
+.about-intro {
+  position: relative;
+  overflow: hidden;
+  padding: 26px 28px;
+}
+
+/* A gold arch in the corner, like a masjid window. */
+.about-intro::after {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--m-gold) 35%, transparent);
+  box-shadow: 0 0 0 18px color-mix(in srgb, var(--m-gold) 6%, transparent), 0 0 0 36px color-mix(in srgb, var(--m-gold) 4%, transparent);
+  pointer-events: none;
+}
+
+.about-eyebrow {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--m-gold);
+}
+
+.about-intro h2 {
+  margin-top: 4px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.about-tagline {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--m-text-2);
+  max-width: 60ch;
+}
+
+.about-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.about-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--m-primary);
+  background: var(--m-primary-soft);
+}
+
+.about-story {
+  margin-top: 14px;
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--m-text-2);
+  max-width: 70ch;
+  white-space: pre-line;
+}
+
+.about-empty {
+  color: var(--m-muted);
+}
+
+/* --- people --- */
+.about-people {
+  padding: 22px 24px 24px;
+}
+
+.about-people h3 {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.about-people-note {
+  margin-top: 2px;
+  font-size: 13.5px;
+  color: var(--m-muted);
+}
+
+.about-people-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 18px 14px;
+  margin-top: 18px;
+}
+
+.about-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  text-align: center;
+}
+
+.about-photo {
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--m-surface-2);
+  box-shadow: 0 0 0 3px var(--m-surface), 0 0 0 5px color-mix(in srgb, var(--m-gold) 70%, transparent), var(--m-shadow);
+}
+
+.about-photo-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #0f6b52, var(--m-forest));
+}
+
+.about-person figcaption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+
+.about-person-role {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--m-gold);
+}
+
+.about-person-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.about-person-since {
+  font-size: 12.5px;
+  color: var(--m-muted);
+}
+
+.about-people.is-founders .about-photo,
+.about-people.is-founders .about-photo-initials {
+  filter: saturate(0.9);
+}
+
+/* --- the log-in invitation under it, on a guest's home page --- */
+.about-login {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--m-primary-soft), var(--m-gold-soft));
+}
+
+.about-login > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.about-login > div > strong {
+  font-size: 15px;
+  color: var(--m-text);
+}
+
+.about-login > div > span {
+  font-size: 13.5px;
+  color: var(--m-text-2);
+}
+
+@media (max-width: 560px) {
+  .about-intro {
+    padding: 22px 20px;
+  }
+
+  .about-intro h2 {
+    font-size: 25px;
+  }
+
+  .about-intro::after {
+    top: -70px;
+    right: -70px;
+    width: 140px;
+    height: 140px;
+  }
+
+  .about-people {
+    padding: 18px 16px 20px;
+  }
+
+  .about-people-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .about-login {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+  }
+}

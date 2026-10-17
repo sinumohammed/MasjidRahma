@@ -47,3 +47,10 @@
   color: var(--m-muted);
   margin-inline-end: 8px;
 }
+
+/* In the pop-up (AuthModal) the modal is the card. */
+.auth-modal .inline-login-card {
+  border: 0;
+  box-shadow: none;
+  padding: 30px 28px 26px;
+}
