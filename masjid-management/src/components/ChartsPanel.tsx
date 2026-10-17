@@ -1,184 +1,302 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Card, Row, Col, Spin, Alert, Empty } from 'antd';
-import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts';
-import dayjs from 'dayjs';
-import { getCategoryStats, getTransactions, type CategoryStat, type DateRangeParams, type Transaction } from '../services/api';
+import { Segmented, Spin, Alert, Empty } from 'antd';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import dayjs, { type Dayjs } from 'dayjs';
+import { getTransactions, getMasjidToday, type Transaction } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
+import { money } from '../utils/money';
 import './ChartsPanel.css';
 
-// Categorical palette in the app's emerald-and-gold family, fixed order -
-// never reassigned by rank.
-const CATEGORY_COLORS = [
-  '#0f6b52', // emerald
-  '#b07d1c', // gold
-  '#2f6aa3', // blue
-  '#be3455', // rose
-  '#6a4fb3', // violet
-  '#2a9d8f', // teal
-  '#c2622d', // terracotta
-  '#5b6b63', // slate
-];
+// The admin's "Money" section under the stat tiles: each chart answers one
+// question, with the answer written above it.
+//   - Month by month: did more come in or go out, each month? Income and
+//     expenses as paired bars - one money scale, one axis.
+//   - Where the money goes / comes from: each category's amount and share,
+//     largest first; a row opens its transactions.
+// Colours: money in emerald, money out gold (--m-chart-in / --m-chart-out) -
+// green against red is hard to tell apart with red-green colour blindness.
 
-const INCOME_COLOR = '#14805f';
-const EXPENSE_COLOR = '#be3455';
-const MAX_CATEGORY_SLICES = 7;
+type Period = 'year' | '12m' | 'all';
+// Money carried over when the books started, recorded as income: not money
+// received, so it is left out of these charts (it was a third of "income"
+// and the tallest bar) and named under "Where it comes from".
+const isOpeningBalance = (t: Transaction) => /^opening balance$/i.test(t.category.trim());
+const TOP_CATEGORIES = 6;
+const MAX_MONTHS = 24;
 
-interface TrendPoint {
-  date: string;
+interface MonthPoint {
+  key: string; // YYYY-MM
+  label: string;
   income: number;
   expense: number;
 }
 
-function buildCategoryData(stats: CategoryStat[]) {
-  const expenseStats = stats
-    .filter((s) => s.type === 'expense')
-    .sort((a, b) => b.total - a.total);
-
-  if (expenseStats.length <= MAX_CATEGORY_SLICES) {
-    return expenseStats.map((s) => ({ category: s.category, total: s.total }));
-  }
-
-  const top = expenseStats.slice(0, MAX_CATEGORY_SLICES);
-  const rest = expenseStats.slice(MAX_CATEGORY_SLICES);
-  const otherTotal = rest.reduce((sum, s) => sum + s.total, 0);
-  return [...top.map((s) => ({ category: s.category, total: s.total })), { category: 'Other', total: otherTotal }];
+interface CategoryRow {
+  category: string;
+  total: number;
+  share: number;
+  other?: boolean;
 }
 
-function buildTrendData(transactions: Transaction[]): TrendPoint[] {
-  const byDate = new Map<string, TrendPoint>();
+// ₹1.2L, ₹45K - short amounts for an axis.
+const compact = (n: number) =>
+  n >= 100000 ? `${+(n / 100000).toFixed(1)}L` : n >= 1000 ? `${+(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K` : String(Math.round(n));
+
+function periodStart(period: Period): Dayjs | null {
+  const today = dayjs(getMasjidToday().dateString);
+  if (period === 'year') return today.startOf('year');
+  if (period === '12m') return today.subtract(11, 'month').startOf('month');
+  return null;
+}
+
+function byCategory(transactions: Transaction[], type: 'income' | 'expense'): CategoryRow[] {
+  const totals = new Map<string, number>();
+  for (const t of transactions) if (t.type === type) totals.set(t.category, (totals.get(t.category) ?? 0) + Number(t.amount));
+  const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  const sum = sorted.reduce((s, [, v]) => s + v, 0);
+  if (!sum) return [];
+  const rows: CategoryRow[] = sorted.slice(0, TOP_CATEGORIES).map(([category, total]) => ({ category, total, share: total / sum }));
+  const rest = sorted.slice(TOP_CATEGORIES);
+  if (rest.length) {
+    const total = rest.reduce((s, [, v]) => s + v, 0);
+    rows.push({ category: `${rest.length} other categories`, total, share: total / sum, other: true });
+  }
+  return rows;
+}
+
+function byMonth(transactions: Transaction[], start: Dayjs | null): MonthPoint[] {
+  const today = dayjs(getMasjidToday().dateString);
+  const first = start ?? transactions.reduce<Dayjs | null>((min, t) => (min && min.isBefore(dayjs(t.date)) ? min : dayjs(t.date)), null);
+  if (!first) return [];
+  const months: MonthPoint[] = [];
+  for (let m = first.startOf('month'); !m.isAfter(today, 'month'); m = m.add(1, 'month')) {
+    months.push({ key: m.format('YYYY-MM'), label: m.format('MMM'), income: 0, expense: 0 });
+  }
+  const index = new Map(months.map((m, i) => [m.key, i]));
   for (const t of transactions) {
-    const key = dayjs(t.date).format('YYYY-MM-DD');
-    if (!byDate.has(key)) {
-      byDate.set(key, { date: key, income: 0, expense: 0 });
-    }
-    const point = byDate.get(key)!;
-    if (t.type === 'income') point.income += t.amount;
-    else point.expense += t.amount;
+    const i = index.get(dayjs(t.date).format('YYYY-MM'));
+    if (i === undefined) continue;
+    if (t.type === 'income') months[i].income += Number(t.amount);
+    else months[i].expense += Number(t.amount);
   }
-  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+  // Months spanning two years: "Jan '26".
+  const years = new Set(months.map((m) => m.key.slice(0, 4)));
+  if (years.size > 1) for (const m of months) m.label = dayjs(`${m.key}-01`).format("MMM 'YY");
+  return months.slice(-MAX_MONTHS);
 }
 
-function CustomTooltip({ active, payload, label, currencySymbol }: any) {
+function MonthTooltip({ active, payload, currencySymbol }: { active?: boolean; payload?: { payload: MonthPoint }[]; currencySymbol: string }) {
   if (!active || !payload?.length) return null;
+  const m = payload[0].payload;
+  const net = m.income - m.expense;
   return (
     <div className="chart-tooltip">
-      {label && <div className="chart-tooltip-label">{dayjs(label).isValid() && /^\d{4}-\d{2}-\d{2}$/.test(label) ? dayjs(label).format('MMM D, YYYY') : label}</div>}
-      {payload.map((entry: any) => (
-        <div key={entry.dataKey ?? entry.name} className="chart-tooltip-row">
-          <span className="chart-tooltip-key" style={{ background: entry.color }} />
-          <span className="chart-tooltip-name">{entry.name}</span>
-          <span className="chart-tooltip-value">
-            {currencySymbol}{Number(entry.value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        </div>
-      ))}
+      <div className="chart-tooltip-label">{dayjs(`${m.key}-01`).format('MMMM YYYY')}</div>
+      <div className="chart-tooltip-row">
+        <span className="chart-tooltip-key" style={{ background: 'var(--m-chart-in)' }} />
+        <span className="chart-tooltip-name">In</span>
+        <span className="chart-tooltip-value">
+          {currencySymbol}
+          {money(m.income)}
+        </span>
+      </div>
+      <div className="chart-tooltip-row">
+        <span className="chart-tooltip-key" style={{ background: 'var(--m-chart-out)' }} />
+        <span className="chart-tooltip-name">Out</span>
+        <span className="chart-tooltip-value">
+          {currencySymbol}
+          {money(m.expense)}
+        </span>
+      </div>
+      <div className="chart-tooltip-row chart-tooltip-net">
+        <span className="chart-tooltip-name">{net >= 0 ? 'Saved' : 'Overspent'}</span>
+        <span className="chart-tooltip-value">
+          {currencySymbol}
+          {money(Math.abs(net))}
+        </span>
+      </div>
     </div>
   );
 }
 
-interface ChartsPanelProps {
-  dateRange?: DateRangeParams;
+function CategoryBars({
+  rows,
+  tone,
+  currencySymbol,
+  onOpen,
+}: {
+  rows: CategoryRow[];
+  tone: 'in' | 'out';
+  currencySymbol: string;
+  onOpen?: (category: string) => void;
+}) {
+  const max = Math.max(...rows.map((r) => r.total));
+  return (
+    <ol className="money-cats">
+      {rows.map((r) => {
+        const open = !r.other && onOpen ? () => onOpen(r.category) : undefined;
+        return (
+          <li key={r.category}>
+            <button type="button" className="money-cat" onClick={open} disabled={!open} title={open ? `See the ${r.category} transactions` : undefined}>
+              <span className="money-cat-text">
+                <span className="money-cat-name">{r.category}</span>
+                <span className="money-cat-amount">
+                  {currencySymbol}
+                  {money(r.total)}
+                  <span className="money-cat-share">{Math.round(r.share * 100)}%</span>
+                </span>
+              </span>
+              <span className="money-cat-track">
+                <span className={`money-cat-bar is-${tone}`} style={{ width: `${Math.max(2, (r.total / max) * 100)}%` }} />
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
-export default function ChartsPanel({ dateRange }: ChartsPanelProps) {
+interface ChartsPanelProps {
+  // A category row opens its transactions (Dashboard -> Transactions page).
+  onOpenCategory?: (type: 'income' | 'expense', category: string) => void;
+}
+
+export default function ChartsPanel({ onOpenCategory }: ChartsPanelProps) {
   const { currencySymbol } = useSettings();
-  const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<Period>('12m');
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const [stats, txns] = await Promise.all([getCategoryStats(dateRange), getTransactions(dateRange)]);
-        setCategoryStats(stats);
-        setTransactions(txns);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load chart data');
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [dateRange?.startDate, dateRange?.endDate]);
+    getTransactions()
+      .then(setTransactions)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load the figures'))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const categoryData = useMemo(() => buildCategoryData(categoryStats), [categoryStats]);
-  const trendData = useMemo(() => buildTrendData(transactions), [transactions]);
+  const { months, out, into, carriedOver } = useMemo(() => {
+    const start = periodStart(period);
+    const inPeriod = start ? transactions.filter((t) => !dayjs(t.date).isBefore(start, 'day')) : transactions;
+    const counted = inPeriod.filter((t) => !isOpeningBalance(t));
+    const carriedOver = inPeriod.filter(isOpeningBalance).reduce((sum, t) => sum + Number(t.amount), 0);
+    return { months: byMonth(counted, start), out: byCategory(counted, 'expense'), into: byCategory(counted, 'income'), carriedOver };
+  }, [transactions, period]);
+  const totalIn = months.reduce((s, m) => s + m.income, 0);
+  const totalOut = months.reduce((s, m) => s + m.expense, 0);
 
   if (loading) {
     return (
       <div className="charts-loading">
-        <Spin size="large" description="Loading charts..." />
+        <Spin size="large" />
       </div>
     );
   }
+  if (error) return <Alert message="Could not load the figures" description={error} type="error" showIcon />;
 
-  if (error) {
-    return <Alert message="Error Loading Charts" description={error} type="error" showIcon style={{ marginTop: 24 }} />;
-  }
+  const latest = [...months].reverse().find((m) => m.income || m.expense);
+  const latestNet = latest ? latest.income - latest.expense : 0;
+  const isCurrentMonth = latest?.key === dayjs(getMasjidToday().dateString).format('YYYY-MM');
+  const periodLabel = period === 'year' ? 'this year' : period === '12m' ? 'in the last 12 months' : 'in all';
+  const rupees = (n: number) => `${currencySymbol}${money(n)}`;
 
   return (
-    <Row gutter={[16, 16]} className="charts-panel">
-      <Col xs={24} lg={11}>
-        <Card title="Expenses by category" className="chart-card" variant="borderless">
-          {categoryData.length === 0 ? (
-            <Empty description="No expense data yet" />
-          ) : (
-            <ResponsiveContainer width="100%" height={Math.max(240, categoryData.length * 44)}>
-              <BarChart data={categoryData} layout="vertical" margin={{ top: 8, right: 24, bottom: 8, left: 8 }}>
-                <CartesianGrid horizontal={false} stroke="var(--m-border)" />
-                <XAxis type="number" tickFormatter={(v) => `${currencySymbol}${v.toLocaleString()}`} stroke="var(--m-muted)" fontSize={12} />
-                <YAxis type="category" dataKey="category" stroke="var(--m-muted)" fontSize={12} width={110} />
-                <Tooltip content={<CustomTooltip currencySymbol={currencySymbol} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-                <Bar dataKey="total" name="Expense" radius={[0, 4, 4, 0]} maxBarSize={24}>
-                  {categoryData.map((entry, index) => (
-                    <Cell key={entry.category} fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-      </Col>
+    <section className="money">
+      <div className="money-head">
+        <h2 className="dashboard-section-title">Money</h2>
+        <Segmented
+          value={period}
+          onChange={(v) => setPeriod(v as Period)}
+          options={[
+            { label: 'This year', value: 'year' },
+            { label: 'Last 12 months', value: '12m' },
+            { label: 'All time', value: 'all' },
+          ]}
+        />
+      </div>
 
-      <Col xs={24} lg={13}>
-        <Card title="Income and expenses over time" className="chart-card" variant="borderless">
-          {trendData.length === 0 ? (
-            <Empty description="No transaction data yet" />
-          ) : (
-            <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={trendData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-                <CartesianGrid vertical={false} stroke="var(--m-border)" />
-                <XAxis
-                  dataKey="date"
-                  stroke="var(--m-muted)"
-                  fontSize={12}
-                  tickFormatter={(v) => dayjs(v).format('MMM D')}
-                />
-                <YAxis stroke="var(--m-muted)" fontSize={12} tickFormatter={(v) => `${currencySymbol}${v.toLocaleString()}`} />
-                <Tooltip content={<CustomTooltip currencySymbol={currencySymbol} />} />
-                <Legend wrapperStyle={{ fontSize: 13 }} />
-                <Line type="monotone" dataKey="income" name="Income" stroke={INCOME_COLOR} strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                <Line type="monotone" dataKey="expense" name="Expense" stroke={EXPENSE_COLOR} strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-              </LineChart>
-            </ResponsiveContainer>
+      <div className="money-card money-months">
+        <div className="money-card-head">
+          <div>
+            <h3>Month by month</h3>
+            {latest ? (
+              <p className="money-headline">
+                {dayjs(`${latest.key}-01`).format('MMMM')}
+                {isCurrentMonth ? ' so far' : ''}: <b>{rupees(latest.income)}</b> in, <b>{rupees(latest.expense)}</b> out -{' '}
+                {latestNet >= 0 ? `${rupees(latestNet)} more came in than went out.` : `${rupees(-latestNet)} more went out than came in.`}
+              </p>
+            ) : (
+              <p className="money-headline">Nothing recorded {periodLabel}.</p>
+            )}
+          </div>
+          <div className="money-legend" aria-label="Legend">
+            <span>
+              <i className="is-in" /> In <b>{rupees(totalIn)}</b>
+            </span>
+            <span>
+              <i className="is-out" /> Out <b>{rupees(totalOut)}</b>
+            </span>
+          </div>
+        </div>
+        {months.length === 0 ? (
+          <Empty description="No transactions in this period" />
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={months} margin={{ top: 8, right: 4, bottom: 0, left: 0 }} barGap={2} barCategoryGap="22%">
+              <CartesianGrid vertical={false} stroke="var(--m-border)" />
+              <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: 'var(--m-border)' }} tick={{ fill: 'var(--m-muted)', fontSize: 12 }} interval="preserveStartEnd" minTickGap={6} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fill: 'var(--m-muted)', fontSize: 12 }} tickFormatter={(v) => `${currencySymbol}${compact(Number(v))}`} width={52} />
+              <Tooltip content={<MonthTooltip currencySymbol={currencySymbol} />} cursor={{ fill: 'var(--m-primary-soft)' }} />
+              <Bar dataKey="income" name="In" fill="var(--m-chart-in)" radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+              <Bar dataKey="expense" name="Out" fill="var(--m-chart-out)" radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="money-pair">
+        <div className="money-card">
+          <div className="money-card-head">
+            <div>
+              <h3>Where the money goes</h3>
+              <p className="money-headline">
+                {out.length ? (
+                  <>
+                    <b>{out[0].category}</b> takes {Math.round(out[0].share * 100)}% of the {rupees(totalOut)} spent {periodLabel}.
+                  </>
+                ) : (
+                  `Nothing spent ${periodLabel}.`
+                )}
+              </p>
+            </div>
+          </div>
+          {out.length > 0 && <CategoryBars rows={out} tone="out" currencySymbol={currencySymbol} onOpen={onOpenCategory && ((c) => onOpenCategory('expense', c))} />}
+        </div>
+
+        <div className="money-card">
+          <div className="money-card-head">
+            <div>
+              <h3>Where it comes from</h3>
+              <p className="money-headline">
+                {into.length ? (
+                  <>
+                    <b>{into[0].category}</b> brings {Math.round(into[0].share * 100)}% of the {rupees(totalIn)} received {periodLabel}.
+                  </>
+                ) : (
+                  `Nothing received ${periodLabel}.`
+                )}
+              </p>
+            </div>
+          </div>
+          {into.length > 0 && <CategoryBars rows={into} tone="in" currencySymbol={currencySymbol} onOpen={onOpenCategory && ((c) => onOpenCategory('income', c))} />}
+          {carriedOver > 0 && (
+            <p className="money-note">
+              Not counted: opening balances, {rupees(carriedOver)} - money carried over when the books started, not money received.
+            </p>
           )}
-        </Card>
-      </Col>
-    </Row>
+        </div>
+      </div>
+    </section>
   );
 }

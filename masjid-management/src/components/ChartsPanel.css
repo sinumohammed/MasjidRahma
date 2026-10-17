@@ -1,13 +1,192 @@
-.chart-card.ant-card {
-  border-radius: var(--m-radius);
-  border: 1px solid var(--m-border);
-  box-shadow: var(--m-shadow);
-  background: var(--m-surface);
+/* The admin's "Money" section (ChartsPanel.tsx). */
+.money {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.chart-card .ant-card-head {
-  border-bottom-color: var(--m-border);
+.money-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.money-head .dashboard-section-title {
+  margin: 0;
+}
+
+.money-card {
+  min-width: 0;
+  padding: 18px 20px 16px;
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
+}
+
+.money-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.money-card h3 {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+/* The answer, in a sentence, above each chart. */
+.money-headline {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--m-text-2);
+  max-width: 62ch;
+}
+
+.money-headline b {
   font-weight: 700;
+  color: var(--m-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.money-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--m-muted);
+}
+
+.money-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.money-legend b {
+  color: var(--m-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.money-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.money-legend i.is-in { background: var(--m-chart-in); }
+.money-legend i.is-out { background: var(--m-chart-out); }
+
+.money-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+/* --- category rows: name, amount and share, a bar --- */
+.money-cats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.money-cat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.money-cat:hover:not(:disabled) {
+  background: var(--m-surface-2);
+}
+
+.money-cat:disabled {
+  cursor: default;
+}
+
+.money-cat-text {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.money-cat-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--m-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.money-cat:disabled .money-cat-name {
+  color: var(--m-muted);
+  font-weight: 500;
+}
+
+.money-cat-amount {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--m-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.money-cat-share {
+  display: inline-block;
+  min-width: 40px;
+  margin-left: 8px;
+  text-align: right;
+  font-weight: 500;
+  color: var(--m-muted);
+}
+
+.money-cat-track {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--m-surface-2);
+  overflow: hidden;
+}
+
+.money-cat-bar {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.money-cat-bar.is-in { background: var(--m-chart-in); }
+.money-cat-bar.is-out { background: var(--m-chart-out); }
+
+.money-note {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--m-border);
+  font-size: 12.5px;
+  color: var(--m-muted);
 }
 
 .charts-loading {
@@ -17,31 +196,34 @@
   min-height: 240px;
 }
 
+/* --- hover box over a month --- */
 .chart-tooltip {
+  min-width: 170px;
   background: var(--m-surface);
   border: 1px solid var(--m-border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  font-size: 12px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: var(--m-shadow-lift);
+  font-size: 13px;
 }
 
 .chart-tooltip-label {
-  color: var(--m-muted);
-  font-weight: 600;
-  margin-bottom: 4px;
+  color: var(--m-text);
+  font-weight: 700;
+  margin-bottom: 6px;
 }
 
 .chart-tooltip-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 2px 0;
 }
 
 .chart-tooltip-key {
   width: 10px;
-  height: 2px;
+  height: 10px;
+  border-radius: 3px;
   display: inline-block;
 }
 
@@ -51,12 +233,37 @@
 
 .chart-tooltip-value {
   margin-left: auto;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--m-text);
+  font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 768px) {
-  .chart-card .recharts-responsive-container {
-    min-height: 220px;
+.chart-tooltip-net {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--m-border);
+}
+
+@media (max-width: 900px) {
+  .money-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .money-card {
+    padding: 16px 14px 12px;
+  }
+
+  .money-head .ant-segmented {
+    width: 100%;
+  }
+
+  .money-head .ant-segmented-group {
+    display: flex;
+  }
+
+  .money-head .ant-segmented-item {
+    flex: 1;
   }
 }

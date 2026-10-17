@@ -339,8 +339,8 @@ export default function Dashboard({
               </div>
             </div>
 
-            {/* Charts */}
-            <ChartsPanel />
+            {/* Money: month by month, where it goes, where it comes from */}
+            <ChartsPanel onOpenCategory={(type, category) => navigate({ type, category })} />
           </>
         )}
       </div>
