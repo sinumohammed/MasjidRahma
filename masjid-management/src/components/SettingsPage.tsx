@@ -26,6 +26,7 @@ import { useAuth } from '../context/AuthContext';
 import { urlBase64ToUint8Array } from '../utils/push';
 import AssistantSettingsCard from './AssistantSettingsCard';
 import McpTokensCard from './McpTokensCard';
+import TelegramCard from './TelegramCard';
 import AboutSettingsCard from './About/AboutSettingsCard';
 import './SettingsPage.css';
 
@@ -415,6 +416,7 @@ export default function SettingsPage() {
       {isAdmin && <h2 className="settings-group">The masjid</h2>}
       {isAdmin && <AboutSettingsCard />}
       {isAdmin && <AssistantSettingsCard />}
+      {isAdmin && <TelegramCard admin />}
       {isAdmin && <McpTokensCard />}
 
       {isAdmin && (

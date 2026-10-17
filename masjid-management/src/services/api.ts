@@ -927,6 +927,37 @@ export const revokeMcpToken = async (id: string): Promise<void> => {
   if (!response.ok) throw new Error(result.error || 'Failed to revoke the token');
 };
 
+// The Telegram bot (server/telegram.js): the person's own link, and for the
+// admin the bot's status and "Connect the bot".
+export interface TelegramLinkStatus {
+  available: boolean;
+  botUsername?: string;
+  links?: { displayName: string | null; createdAt: string }[];
+}
+export interface TelegramBotStatus {
+  configured: boolean;
+  assistant: boolean;
+  botUsername?: string;
+  webhookUrl?: string | null;
+  pendingUpdates?: number;
+  lastError?: { message: string; at: string } | null;
+  linkedAccounts?: number;
+}
+
+const telegramCall = async <T>(path: string, init: RequestInit, failure: string): Promise<T> => {
+  const response = await apiFetch(`${API_BASE_URL}/telegram${path}`, { ...init, headers: { ...(init.headers ?? {}), ...authHeaders() } });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || failure);
+  return result as T;
+};
+
+export const getTelegramLink = () => telegramCall<TelegramLinkStatus>('/link', {}, 'Failed to load the Telegram link');
+// A one-time t.me link (10 minutes) that links the Telegram account that opens it.
+export const createTelegramLinkCode = () => telegramCall<{ url: string; expiresAt: string }>('/link-code', { method: 'POST' }, 'Failed to make a Telegram link');
+export const unlinkTelegram = () => telegramCall<{ ok: true }>('/link', { method: 'DELETE' }, 'Failed to unlink Telegram');
+export const getTelegramBotStatus = () => telegramCall<TelegramBotStatus>('/admin', {}, 'Failed to load the Telegram bot status');
+export const connectTelegramBot = () => telegramCall<{ webhookUrl: string; botUsername: string }>('/admin/webhook', { method: 'POST' }, 'Failed to connect the Telegram bot');
+
 // About the masjid: its story and the people behind it (shown to everyone,
 // edited by the admin in Settings).
 export type PersonGroup = 'leadership' | 'founders';

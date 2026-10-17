@@ -13,6 +13,7 @@ import { waitUntil } from '@vercel/functions';
 import { AI_OPENAPI } from './aiOpenapi.js';
 import { aiMcpHandler } from './aiMcp.js';
 import { findMembers, toLatin } from './nameMatch.js';
+import { telegramRouter } from './telegram.js';
 
 // Load server/.env by absolute path rather than relying on dotenv's default
 // (relative to process.cwd()) - the local/Render entry (server/index.js) and
@@ -308,6 +309,46 @@ async function initializeDatabase() {
       hint TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       last_used_at TIMESTAMP
+    )
+  `);
+
+  // Chat channels for the assistant (telegram.js; WhatsApp later): which
+  // masjid login a chat account asks as. external_id is the channel's own
+  // id (the Telegram user id). A link is made by the person themselves - a
+  // one-time code from the app, or sharing their own phone number with the
+  // bot - and deleted with the user.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS channel_links (
+      channel TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      display_name TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (channel, external_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS channel_link_codes (
+      code_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at TIMESTAMP NOT NULL
+    )
+  `);
+  // Per chat account: the voice-note language. Kept for guests too.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS channel_prefs (
+      channel TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      voice_language TEXT,
+      PRIMARY KEY (channel, external_id)
+    )
+  `);
+  // Telegram updates already handled - it sends one again when our answer
+  // to its webhook is lost, and a question must not be answered twice.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS telegram_updates (
+      update_id BIGINT PRIMARY KEY,
+      received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -3184,6 +3225,11 @@ aiGet('/pending-dues', async (req) => {
   if (search) {
     const who = findMembers(search, await dbAll('SELECT id, unique_id, name FROM members ORDER BY position ASC'));
     if (!who.length) return noMatchFor(search);
+    // A member asking about someone else: refused, as /dues-by-year does.
+    // Before, the list was already cut to the member's own, so the other
+    // member came back "hasPendingDues: false" and the answer said they owed
+    // nothing (found by the Telegram eval: Abdul owed ₹3000).
+    if (!req.aiUser.isAdmin && !who.some((m) => m.id === req.aiUser.memberId)) throw forbidden("only the admin can see other members' dues");
     const ids = new Set(who.map((m) => m.id));
     pending = pending.filter((p) => ids.has(p.id));
     searched = {
@@ -3441,11 +3487,12 @@ async function dailyLimits() {
   return limits;
 }
 
-// Who is counted, and their limit (null = no limit).
-async function usageFor(req) {
+// Who is counted, and their limit (null = no limit). A guest is counted by
+// guestKey: the IP address in the app, the Telegram account in the bot.
+async function usageFor(req, guestKey = `ip:${req.ip}`) {
   const role = !req.user ? 'guest' : req.user.isAdmin ? 'admin' : 'member';
   const limits = await dailyLimits().catch(() => DEFAULT_DAILY_LIMIT);
-  return { key: req.user ? String(req.user.id) : `ip:${req.ip}`, limit: limits[role] || null };
+  return { key: req.user ? String(req.user.id) : guestKey, limit: limits[role] || null };
 }
 
 // The admin's Settings page: read and change the limits (0 = no limit).
@@ -3553,8 +3600,46 @@ app.get('/api/assistant/status', optionalAuth, async (req, res) => {
   }
 });
 
+// One question to the AI service for `user` (null = a guest), counted
+// against `usage`. Returns { status, body } - shared by the app's chat below
+// and the Telegram bot (telegram.js). `display`: what the asker can show
+// (the app draws tables and charts; Telegram shows text).
+async function askAssistant({ user, usage, question, conversationId, ref, display }) {
+  let used;
+  try {
+    used = await takeQuestion(usage);
+  } catch {
+    return { status: 500, body: { error: 'Could not check today\'s question count - please try again' } };
+  }
+  if (used === null) {
+    return {
+      status: 429,
+      body: { error: `You have used today's ${usage.limit} questions - ${user ? 'more tomorrow' : 'log in, or ask again tomorrow'}`, limit: usage.limit, remaining: 0 },
+    };
+  }
+  const mode = user ? { mode: 'single' } : { mode: 'multi', agent: 'connected_apps' };
+  const giveBack = async (status, body) => {
+    await giveQuestionBack(usage).catch(() => {});
+    return { status, body: { ...body, ...remainingOf(usage, used - 1) } };
+  };
+  try {
+    const aiRes = await fetch(AI_ASK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_ASK_KEY}` },
+      body: JSON.stringify({ question, conversationId, ...mode, user: { token: aiUserToken(user), ref }, ...(display ? { display } : {}) }),
+      // The AI may wait for this server's own /api/ai/* calls (a cold start of this server).
+      signal: AbortSignal.timeout(120000),
+    });
+    const data = await aiRes.json().catch(() => ({}));
+    if (!aiRes.ok) return giveBack(aiRes.status === 429 ? 429 : 502, { error: data.error ?? 'The assistant could not answer - please try again' });
+    return { status: 200, body: { answer: data.answer, sources: (data.sources ?? []).map((s) => ({ n: s.n, source: s.source, section: s.section })), ...remainingOf(usage, used) } };
+  } catch (error) {
+    return giveBack(502, { error: error.name === 'TimeoutError' ? 'The assistant took too long - please try again' : 'The assistant could not be reached' });
+  }
+}
+
 app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
-  if (!AI_ASK_URL || !AI_ASK_KEY || !MASJID_AI_TOKEN) return res.status(503).json({ error: 'The assistant is not set up on this server' });
+  if (!assistantAvailable()) return res.status(503).json({ error: 'The assistant is not set up on this server' });
   const question = String(req.body?.question ?? '').trim();
   const chatId = String(req.body?.chatId ?? 'main');
   if (!question || question.length > 2000) return res.status(400).json({ error: 'Ask a question of up to 2000 characters' });
@@ -3562,40 +3647,16 @@ app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
   // A guest's conversation is known only by its id: the app sends a random
   // one per browser, so two guests never share one ("main" would).
   if (!req.user && chatId.length < 16) return res.status(400).json({ error: 'A guest chat needs a random chatId of 16+ characters' });
-  const usage = await usageFor(req);
-  let used;
-  try {
-    used = await takeQuestion(usage);
-  } catch (error) {
-    return res.status(500).json({ error: 'Could not check today\'s question count - please try again' });
-  }
-  if (used === null) {
-    return res.status(429).json({
-      error: `You have used today's ${usage.limit} questions - ${req.user ? 'more tomorrow' : 'log in, or ask again tomorrow'}`,
-      limit: usage.limit,
-      remaining: 0,
-    });
-  }
-  const mode = req.user ? { mode: 'single' } : { mode: 'multi', agent: 'connected_apps' };
-  const giveBack = async (status, body) => {
-    await giveQuestionBack(usage).catch(() => {});
-    res.status(status).json({ ...body, ...remainingOf(usage, used - 1) });
-  };
-  try {
-    const aiRes = await fetch(AI_ASK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_ASK_KEY}` },
-      // display: the chat shows Markdown tables and draws ```chart blocks (AssistantChat.tsx).
-      body: JSON.stringify({ question, conversationId: conversationFor(req, chatId), ...mode, user: { token: aiUserToken(req.user), ref: aiUserRef(req) }, display: { tables: true, charts: true } }),
-      // The AI may wait for this server's own /api/ai/* calls (a cold start of this server).
-      signal: AbortSignal.timeout(120000),
-    });
-    const data = await aiRes.json().catch(() => ({}));
-    if (!aiRes.ok) return giveBack(aiRes.status === 429 ? 429 : 502, { error: data.error ?? 'The assistant could not answer - please try again' });
-    res.json({ answer: data.answer, sources: (data.sources ?? []).map((s) => ({ n: s.n, source: s.source, section: s.section })), ...remainingOf(usage, used) });
-  } catch (error) {
-    await giveBack(502, { error: error.name === 'TimeoutError' ? 'The assistant took too long - please try again' : 'The assistant could not be reached' });
-  }
+  const { status, body } = await askAssistant({
+    user: req.user ?? null,
+    usage: await usageFor(req),
+    question,
+    conversationId: conversationFor(req, chatId),
+    ref: aiUserRef(req),
+    // The chat shows Markdown tables and draws ```chart blocks (AssistantChat.tsx).
+    display: { tables: true, charts: true },
+  });
+  res.status(status).json(body);
 });
 
 // Voice input: the recording (raw body, up to 4 MB - about 2 minutes) goes
@@ -3603,6 +3664,27 @@ app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
 // sending. Not counted as a question, but only for someone with questions
 // left today, since it spends the same free quota.
 const VOICE_LANGUAGES = new Set(['English', 'Malayalam', 'Hindi', 'Tamil', 'Kannada', 'Telugu', 'Arabic', 'Urdu']);
+
+// A recording -> { status, body: { text, language } } through the AI
+// service's speech-to-text. Used by the app's mic button and the Telegram
+// bot's voice notes. `lang` is a hint (VOICE_LANGUAGES), else none.
+async function transcribeAudio(audio, contentType, lang) {
+  const hint = VOICE_LANGUAGES.has(lang) ? `?lang=${encodeURIComponent(lang)}` : '';
+  try {
+    const aiRes = await fetch(`${AI_ASK_URL.replace(/\/$/, '')}/transcribe${hint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType || 'audio/webm', Authorization: `Bearer ${AI_ASK_KEY}` },
+      body: audio,
+      signal: AbortSignal.timeout(60000),
+    });
+    const data = await aiRes.json().catch(() => ({}));
+    if (!aiRes.ok) return { status: aiRes.status === 429 ? 429 : 502, body: { error: data.error ?? 'Could not turn the recording into text' } };
+    return { status: 200, body: { text: data.text ?? '', language: data.language ?? null } };
+  } catch (error) {
+    return { status: 502, body: { error: error.name === 'TimeoutError' ? 'Turning the recording into text took too long' : 'The assistant could not be reached' } };
+  }
+}
+
 app.post('/api/assistant/transcribe', optionalAuth, express.raw({ type: () => true, limit: '4mb' }), async (req, res) => {
   if (!assistantAvailable()) return res.status(503).json({ error: 'The assistant is not set up on this server' });
   const usage = await usageFor(req);
@@ -3610,36 +3692,38 @@ app.post('/api/assistant/transcribe', optionalAuth, express.raw({ type: () => tr
     return res.status(429).json({ error: `You have used today's ${usage.limit} questions`, limit: usage.limit, remaining: 0 });
   }
   if (!req.body?.length) return res.status(400).json({ error: 'No recording received' });
-  const lang = VOICE_LANGUAGES.has(req.query.lang) ? `?lang=${encodeURIComponent(req.query.lang)}` : '';
-  try {
-    const aiRes = await fetch(`${AI_ASK_URL.replace(/\/$/, '')}/transcribe${lang}`, {
-      method: 'POST',
-      headers: { 'Content-Type': req.get('content-type') || 'audio/webm', Authorization: `Bearer ${AI_ASK_KEY}` },
-      body: req.body,
-      signal: AbortSignal.timeout(60000),
-    });
-    const data = await aiRes.json().catch(() => ({}));
-    if (!aiRes.ok) return res.status(aiRes.status === 429 ? 429 : 502).json({ error: data.error ?? 'Could not turn the recording into text' });
-    res.json({ text: data.text ?? '', language: data.language ?? null });
-  } catch (error) {
-    res.status(502).json({ error: error.name === 'TimeoutError' ? 'Turning the recording into text took too long' : 'The assistant could not be reached' });
-  }
+  const { status, body } = await transcribeAudio(req.body, req.get('content-type'), req.query.lang);
+  res.status(status).json(body);
 });
+
+// Forget one conversation on the AI side ("New chat"). Throws when the AI
+// service cannot be reached.
+async function forgetConversation(conversationId) {
+  await fetch(`${AI_ASK_URL.replace(/\/$/, '')}/conversations/${encodeURIComponent(conversationId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${AI_ASK_KEY}` },
+    signal: AbortSignal.timeout(15000),
+  });
+}
 
 app.delete('/api/assistant/chat/:chatId', optionalAuth, async (req, res) => {
   if (!AI_ASK_URL || !AI_ASK_KEY) return res.status(503).json({ error: 'The assistant is not set up on this server' });
   if (!CHAT_ID.test(req.params.chatId)) return res.status(400).json({ error: 'Invalid chatId' });
   try {
-    await fetch(`${AI_ASK_URL.replace(/\/$/, '')}/conversations/${encodeURIComponent(conversationFor(req, req.params.chatId))}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${AI_ASK_KEY}` },
-      signal: AbortSignal.timeout(15000),
-    });
+    await forgetConversation(conversationFor(req, req.params.chatId));
     res.json({ ok: true });
   } catch {
     res.status(502).json({ error: 'The assistant could not be reached' });
   }
 });
+
+// The assistant as a Telegram bot (telegram.js): the same questions, roles
+// and daily limits as the chat above.
+app.use('/api/telegram', telegramRouter({
+  dbGet, dbAll, dbRun, requireAuth, requireAdmin, runInBackground,
+  assistantAvailable, askAssistant, usageFor, usedToday, transcribeAudio, forgetConversation, aiUserRef,
+  guestRef: (key) => `guest:${crypto.createHmac('sha256', AI_USER_SECRET).update(key).digest('hex').slice(0, 10)}`,
+}));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'API is running' });

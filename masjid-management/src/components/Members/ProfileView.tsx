@@ -17,6 +17,7 @@ import {
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
 import MemberAvatar from './MemberAvatar';
+import TelegramCard from '../TelegramCard';
 import { money } from '../../utils/money';
 import './ProfileView.css';
 
@@ -435,6 +436,7 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
               />
             </Card>
           )}
+          {!isAdmin && variant === 'page' && <TelegramCard className="m-card profile-view-card" />}
         </>
       ) : null}
     </div>
