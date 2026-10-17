@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Table, Tag, Button, Input, Form, Alert, Tooltip, Popconfirm, Empty, Spin, message, List, Badge } from 'antd';
+import { Card, Table, Button, Input, Form, Alert, Tooltip, Popconfirm, Empty, Spin, message, List, Badge } from 'antd';
 import { SoundOutlined, BellOutlined, NotificationOutlined, DeleteOutlined, ClearOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -15,6 +15,9 @@ import {
 } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
+import MemberAvatar from './Members/MemberAvatar';
+import { money } from '../utils/money';
+import { announcementDate } from '../utils/dates';
 import './Announcements.css';
 
 const { TextArea } = Input;
@@ -163,9 +166,23 @@ export default function Announcements() {
       title: 'Member',
       key: 'member',
       render: (_, member) => (
-        <div>
-          <div className="announcements-member-name">{member.name}</div>
-          <div className="announcements-member-id">{member.unique_id}</div>
+        <div className="announcements-member">
+          <MemberAvatar key={member.unique_id} uniqueId={member.unique_id} size={34} />
+          <div>
+            <div className="announcements-member-name">{member.name}</div>
+            <div className="announcements-member-id">{member.unique_id}</div>
+            {/* On a phone the plan, amount and months are here, not in columns. */}
+            <div className="announcements-member-meta">
+              <span className={`m-pill ${member.payment_frequency === 'monthly' ? 'is-blue' : 'is-gold'}`}>
+                {member.payment_frequency === 'monthly' ? 'Monthly' : 'Yearly'}
+              </span>
+              <span className="announcements-due-amount">
+                {currencySymbol}
+                {money(member.due)}
+              </span>
+              {member.missedMonths && member.missedMonths.length > 0 && <span>{member.missedMonths.join(', ')}</span>}
+            </div>
+          </div>
         </div>
       ),
     },
@@ -173,25 +190,28 @@ export default function Announcements() {
       title: 'Plan',
       dataIndex: 'payment_frequency',
       key: 'payment_frequency',
+      responsive: ['md'],
       render: (freq: PendingDuesMember['payment_frequency']) => (
-        <Tag color={freq === 'monthly' ? 'blue' : 'purple'}>{freq === 'monthly' ? 'Monthly' : 'Yearly'}</Tag>
+        <span className={`m-pill ${freq === 'monthly' ? 'is-blue' : 'is-gold'}`}>{freq === 'monthly' ? 'Monthly' : 'Yearly'}</span>
       ),
     },
     {
       title: 'Due',
       dataIndex: 'due',
       key: 'due',
+      responsive: ['md'],
       render: (due: number) => (
         <span className="announcements-due-amount">
           {currencySymbol}
-          {due.toFixed(2)}
+          {money(due)}
         </span>
       ),
     },
     {
-      title: 'Missed Months',
+      title: 'Missed months',
       dataIndex: 'missedMonths',
       key: 'missedMonths',
+      responsive: ['md'],
       render: (missedMonths: string[] | null) =>
         missedMonths && missedMonths.length > 0 ? missedMonths.join(', ') : '-',
     },
@@ -200,7 +220,6 @@ export default function Announcements() {
       key: 'actions',
       width: 60,
       align: 'center',
-      fixed: 'right',
       render: (_, member) => (
         <Tooltip title={member.hasPushSubscription ? 'Send reminder' : 'Member has not enabled notifications'}>
           <Popconfirm
@@ -225,15 +244,18 @@ export default function Announcements() {
   ];
 
   return (
-    <div className="announcements-container">
-      <div className="announcements-header">
-        <h1 className="announcements-title">
-          <SoundOutlined /> Announcements
-        </h1>
+    <div className="m-page announcements-container">
+      <div className="m-page-head">
+        <div className="m-page-head-text">
+          <h1 className="m-page-title">Announcements</h1>
+          <span className="m-page-sub">
+            {isAdmin ? 'Send news to every member, and remind those with pending payments' : 'News from the masjid for all members'}
+          </span>
+        </div>
       </div>
 
       {isAdmin && (
-        <Card className="announcements-card" title={<><NotificationOutlined /> Public Announcement</>}>
+        <Card className="announcements-card" title={<><NotificationOutlined /> Send an announcement</>}>
           <Form layout="vertical">
             <Form.Item label="Title">
               <Input
@@ -266,7 +288,7 @@ export default function Announcements() {
                 loading={sendingAnnouncement}
                 disabled={!announceTitle.trim() || !announceMessage.trim()}
               >
-                Send to All Members
+                Send to all members
               </Button>
             </Popconfirm>
           </Form>
@@ -276,7 +298,7 @@ export default function Announcements() {
       {isAdmin && (
       <Card
         className="announcements-card announcements-pending-card"
-        title={<><BellOutlined /> Pending Masjid Payments</>}
+        title={<><BellOutlined /> Pending masjid payments</>}
         extra={
           pending.length > 0 && (
             <Popconfirm
@@ -287,7 +309,7 @@ export default function Announcements() {
             >
               <Badge count={pending.length} size="small" offset={[-4, 4]} className="remind-all-badge">
                 <Button icon={<BellOutlined />} loading={remindingAll} className="remind-all-btn">
-                  <span className="remind-all-btn-label">Remind All ({pending.length})</span>
+                  <span className="remind-all-btn-label">Remind all ({pending.length})</span>
                 </Button>
               </Badge>
             </Popconfirm>
@@ -307,7 +329,6 @@ export default function Announcements() {
             dataSource={pending}
             rowKey="id"
             pagination={false}
-            scroll={{ x: 'max-content' }}
           />
         )}
       </Card>
@@ -315,7 +336,7 @@ export default function Announcements() {
 
       <Card
         className="announcements-card"
-        title={<><BellOutlined /> Recent Announcements</>}
+        title={<><SoundOutlined /> Recent announcements</>}
         extra={
           isAdmin &&
           announcements.length > 0 && (
@@ -324,8 +345,8 @@ export default function Announcements() {
               description="This removes the entire history for everyone."
               onConfirm={handleClearAll}
             >
-              <Button icon={<ClearOutlined />} loading={clearingAll} danger>
-                Clear All
+              <Button icon={<ClearOutlined />} loading={clearingAll} danger type="text">
+                Clear all
               </Button>
             </Popconfirm>
           )
@@ -359,11 +380,11 @@ export default function Announcements() {
                           <Button
                             icon={<DeleteOutlined />}
                             size="small"
+                            type="text"
                             danger
                             loading={deletingId === item.id}
-                          >
-                            Delete
-                          </Button>
+                            aria-label="Delete this announcement"
+                          />
                         </Popconfirm>,
                       ]
                     : undefined
@@ -371,9 +392,7 @@ export default function Announcements() {
               >
                 <div className="announcement-item-title">{item.title}</div>
                 <div className="announcement-item-message">{item.message}</div>
-                <div className="announcement-item-date">
-                  {new Date(item.created_at).toLocaleString()}
-                </div>
+                <div className="announcement-item-date">{announcementDate(item.created_at)}</div>
               </List.Item>
             )}
           />

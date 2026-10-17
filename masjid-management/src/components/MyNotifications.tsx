@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, Alert, Spin, Empty, List, Button, Popconfirm, message } from 'antd';
-import { BellOutlined, DeleteOutlined, ClearOutlined } from '@ant-design/icons';
+import { DeleteOutlined, ClearOutlined } from '@ant-design/icons';
 import {
   getMyNotifications,
   deleteMyNotification,
@@ -8,6 +8,7 @@ import {
   type MemberNotification,
 } from '../services/api';
 import './Announcements.css';
+import { announcementDate } from '../utils/dates';
 
 export default function MyNotifications() {
   const [notifications, setNotifications] = useState<MemberNotification[]>([]);
@@ -74,11 +75,12 @@ export default function MyNotifications() {
   };
 
   return (
-    <div className="announcements-container">
-      <div className="announcements-header">
-        <h1 className="announcements-title">
-          <BellOutlined /> My Notifications
-        </h1>
+    <div className="m-page announcements-container">
+      <div className="m-page-head">
+        <div className="m-page-head-text">
+          <h1 className="m-page-title">My Notifications</h1>
+          <span className="m-page-sub">Reminders and messages sent to you</span>
+        </div>
       </div>
 
       <Card
@@ -90,8 +92,8 @@ export default function MyNotifications() {
               description="This removes your entire notification history."
               onConfirm={handleClearAll}
             >
-              <Button icon={<ClearOutlined />} loading={clearingAll} danger>
-                Clear All
+              <Button icon={<ClearOutlined />} loading={clearingAll} danger type="text">
+                Clear all
               </Button>
             </Popconfirm>
           )
@@ -118,16 +120,14 @@ export default function MyNotifications() {
                     title="Delete this notification?"
                     onConfirm={() => handleDelete(item.id)}
                   >
-                    <Button icon={<DeleteOutlined />} size="small" danger loading={deletingId === item.id}>
-                      Delete
-                    </Button>
+                    <Button icon={<DeleteOutlined />} size="small" type="text" danger loading={deletingId === item.id} aria-label="Delete this notification" />
                   </Popconfirm>,
                 ]}
               >
                 <div className="announcement-item-title">{item.title}</div>
                 <div className="announcement-item-message">{item.message}</div>
                 <div className="announcement-item-date">
-                  {new Date(item.created_at).toLocaleString()}
+                  {announcementDate(item.created_at)}
                 </div>
               </List.Item>
             )}

@@ -1,23 +1,39 @@
 .settings-container {
-  padding: 24px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  min-height: 100vh;
-  border-radius: 8px;
+  max-width: 880px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-.settings-title {
-  font-size: 32px;
-  font-weight: bold;
-  color: #1f2937;
-  margin-bottom: 24px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+/* "You", "The masjid", "Help": what the cards below are about. */
+.settings-group {
+  margin: 8px 2px -6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--m-gold);
 }
 
-.settings-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  background: white !important;
-  margin-bottom: 24px;
+.settings-card.ant-card,
+.settings-card.ant-collapse {
+  background: var(--m-surface) !important;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
+}
+
+.settings-card.ant-card .ant-card-head {
+  border-bottom-color: var(--m-border);
+  font-weight: 700;
+}
+
+.settings-card.ant-collapse > .ant-collapse-item {
+  border-bottom: 0;
+}
+
+.settings-card.ant-collapse > .ant-collapse-item > .ant-collapse-header {
+  padding: 16px 24px;
+  font-weight: 700;
 }
 
 .settings-row {
@@ -29,88 +45,74 @@
 }
 
 .settings-row-label {
-  font-weight: 600;
-  color: #374151;
+  font-weight: 700;
+  color: var(--m-text);
 }
 
 .settings-row-hint {
-  font-size: 12px;
-  color: #8c8c8c;
+  font-size: 13px;
+  color: var(--m-muted);
   margin-top: 2px;
 }
 
 .settings-card .settings-row-label {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
+.settings-theme-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+/* --- who to call --- */
 .settings-contact-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 6px 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--m-border);
 }
 
 .settings-contact-name {
-  color: #374151;
+  color: var(--m-text-2);
+  font-weight: 600;
+  min-width: 0;
 }
 
 .settings-contact-row-right {
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-.settings-contact-phone {
-  color: inherit;
-  white-space: nowrap;
-}
-
-.settings-contact-edit-btn {
-  color: #8c8c8c;
   flex-shrink: 0;
 }
 
-.settings-contact-nil {
-  color: #8c8c8c;
+.settings-contact-phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--m-primary);
+  background: var(--m-primary-soft);
+  font-variant-numeric: tabular-nums;
 }
 
-:root[data-theme='dark'] .settings-contact-name {
-  color: #d9d9d9;
+.settings-contact-edit-btn.ant-btn {
+  color: var(--m-muted);
+  flex-shrink: 0;
 }
 
-@media (max-width: 768px) {
-  .settings-container {
-    padding: 16px;
-  }
-
-  .settings-title {
-    font-size: 24px;
-  }
-
-  .settings-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+.settings-contact-nil.settings-contact-phone {
+  color: var(--m-muted);
+  background: transparent;
 }
 
-/* Dark Theme Overrides */
-:root[data-theme='dark'] .settings-container {
-  background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
-}
-
-:root[data-theme='dark'] .settings-title {
-  color: #e5e7eb;
-  text-shadow: none;
-}
-
-:root[data-theme='dark'] .settings-card {
-  background: #1f1f1f !important;
-}
-
-:root[data-theme='dark'] .settings-row-label {
-  color: #d9d9d9;
-}
 
 /* Assistant card: label on the left, number on the right, one row each - also on a phone. */
 .assistant-limit-row {

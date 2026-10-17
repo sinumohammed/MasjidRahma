@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Card, Switch, Select, Button, message, Space, Divider, Form, Input, Collapse, Row, Col, Modal } from 'antd';
+import { Card, Switch, Select, Button, message, Space, Divider, Form, Input, Collapse, Row, Col, Modal, Segmented } from 'antd';
 import {
   BulbOutlined,
   DownloadOutlined,
   MoonOutlined,
+  SunOutlined,
   LockOutlined,
   QuestionCircleOutlined,
   PhoneOutlined,
@@ -273,18 +274,29 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="settings-container">
-      <h1 className="settings-title">⚙️ Settings</h1>
+    <div className="m-page settings-container">
+      <div className="m-page-head">
+        <div className="m-page-head-text">
+          <h1 className="m-page-title">Settings</h1>
+          <span className="m-page-sub">{isAdmin ? 'Your app and account, and the masjid\'s settings' : 'Your app and account'}</span>
+        </div>
+      </div>
+
+      <h2 className="settings-group">You</h2>
 
       <Card title={<span><BulbOutlined /> Appearance</span>} className="settings-card" variant="borderless">
         <div className="settings-row">
           <div>
-            <div className="settings-row-label"><MoonOutlined /> Dark Mode</div>
-            <div className="settings-row-hint">Switch between light and dark theme</div>
+            <div className="settings-row-label">Theme</div>
+            <div className="settings-row-hint">Light for daytime, dark for the evening</div>
           </div>
-          <Switch
-            checked={theme === 'dark'}
-            onChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+          <Segmented
+            value={theme}
+            onChange={(v) => setTheme(v as 'light' | 'dark')}
+            options={[
+              { value: 'light', label: <span className="settings-theme-option"><SunOutlined /> Light</span> },
+              { value: 'dark', label: <span className="settings-theme-option"><MoonOutlined /> Dark</span> },
+            ]}
           />
         </div>
 
@@ -318,7 +330,7 @@ export default function SettingsPage() {
               <div className="settings-row-label">Food-day reminders</div>
               <div className="settings-row-hint">Get a push notification the day before your food-day turn.</div>
               {notificationPermission === 'denied' && (
-                <div className="settings-row-hint" style={{ color: '#cf1322' }}>
+                <div className="settings-row-hint" style={{ color: 'var(--m-rose)' }}>
                   Notifications are blocked for this site in your browser settings — enable them there first.
                 </div>
               )}
@@ -340,7 +352,7 @@ export default function SettingsPage() {
           items={[
             {
               key: 'change-password',
-              label: <span><LockOutlined /> Change Password</span>,
+              label: <span><LockOutlined /> Change password</span>,
               children: (
                 <Form
                   form={passwordForm}
@@ -390,7 +402,7 @@ export default function SettingsPage() {
                   </Form.Item>
                   <Form.Item style={{ marginBottom: 0 }}>
                     <Button type="primary" htmlType="submit" loading={changingPassword}>
-                      Update Password
+                      Update password
                     </Button>
                   </Form.Item>
                 </Form>
@@ -400,12 +412,13 @@ export default function SettingsPage() {
         />
       )}
 
+      {isAdmin && <h2 className="settings-group">The masjid</h2>}
       {isAdmin && <AboutSettingsCard />}
       {isAdmin && <AssistantSettingsCard />}
       {isAdmin && <McpTokensCard />}
 
       {isAdmin && (
-        <Card title={<span><DownloadOutlined /> Export Data</span>} className="settings-card" variant="borderless">
+        <Card title={<span><DownloadOutlined /> Export data</span>} className="settings-card" variant="borderless">
           <p className="settings-row-hint">Download all transactions for backup or use in other tools.</p>
           <Space wrap>
             <Button icon={<DownloadOutlined />} onClick={() => handleExport('csv')} loading={exporting}>
@@ -418,10 +431,12 @@ export default function SettingsPage() {
         </Card>
       )}
 
-      <Card title={<span><QuestionCircleOutlined /> Help</span>} className="settings-card" variant="borderless">
+      <h2 className="settings-group">Help</h2>
+
+      <Card title={<span><QuestionCircleOutlined /> Who to call</span>} className="settings-card" variant="borderless">
         <Row gutter={[24, 16]}>
           <Col xs={24} sm={12}>
-            <div className="settings-row-label">Masjid Committee</div>
+            <div className="settings-row-label">Masjid committee</div>
             {committeeContacts.map((contact) => (
               <ContactRow key={contact.id} contact={contact} editable={isAdmin} onEdit={openEditContact} />
             ))}
@@ -436,14 +451,14 @@ export default function SettingsPage() {
 
         <Divider />
 
-        <div className="settings-row-label">Site Related Queries</div>
+        <div className="settings-row-label">About this app</div>
         {queryContacts.map((contact) => (
           <ContactRow key={contact.id} contact={contact} editable={isAdmin} onEdit={openEditContact} />
         ))}
       </Card>
 
       <Modal
-        title="Edit Contact"
+        title="Edit contact"
         open={!!editingContact}
         onCancel={() => setEditingContact(null)}
         onOk={() => contactForm.submit()}

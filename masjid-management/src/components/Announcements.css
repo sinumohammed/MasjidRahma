@@ -1,29 +1,14 @@
-.announcements-container {
-  padding: 24px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  min-height: 100vh;
-  border-radius: 8px;
+/* Announcements and My Notifications (both use these). */
+.announcements-card.ant-card {
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
 }
 
-.announcements-header {
-  margin-bottom: 24px;
-}
-
-.announcements-title {
-  font-size: 28px;
-  font-weight: bold;
-  color: #1f2937;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.announcements-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  margin-bottom: 24px;
+.announcements-card.ant-card .ant-card-head {
+  border-bottom-color: var(--m-border);
+  font-weight: 700;
 }
 
 .announcements-loading {
@@ -32,61 +17,44 @@
   padding: 40px 0;
 }
 
+/* --- pending payments --- */
+.announcements-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .announcements-member-name {
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--m-text);
 }
 
 .announcements-member-id {
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--m-muted);
+}
+
+.announcements-member-meta {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--m-muted);
+}
+
+@media (max-width: 767px) {
+  .announcements-member-meta {
+    display: flex;
+  }
 }
 
 .announcements-due-amount {
-  font-weight: 600;
-  color: #cf1322;
-}
-
-.announcement-list-item {
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.announcement-item-title {
-  font-weight: 600;
-  font-size: 15px;
-}
-
-.announcement-item-message {
-  margin-top: 4px;
-  white-space: pre-wrap;
-}
-
-.announcement-item-date {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #8c8c8c;
-}
-
-/* Dark Theme Overrides */
-:root[data-theme='dark'] .announcements-container {
-  background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
-}
-
-:root[data-theme='dark'] .announcements-title {
-  color: #e5e7eb;
-  text-shadow: none;
-}
-
-:root[data-theme='dark'] .announcements-card {
-  background: #1f1f1f;
-}
-
-:root[data-theme='dark'] .announcements-member-id {
-  color: #a0a0a0;
-}
-
-:root[data-theme='dark'] .announcement-item-date {
-  color: #a0a0a0;
+  font-weight: 700;
+  color: var(--m-rose);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .announcements-pending-card .ant-card-head-wrapper {
@@ -98,15 +66,49 @@
   white-space: normal;
 }
 
-/* Responsive */
-@media (max-width: 480px) {
-  .announcements-container {
-    padding: 16px;
-  }
+/* --- the feed: one message per row, a gold marker on the left --- */
+.announcement-list-item.ant-list-item {
+  position: relative;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 16px 4px 14px 22px !important;
+  border-block-end-color: var(--m-border) !important;
+}
 
-  .announcements-title {
-    font-size: 22px;
-  }
+.announcement-list-item::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 22px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--m-gold-bright);
+  box-shadow: 0 0 0 4px var(--m-gold-soft);
+}
+
+.announcement-item-title {
+  font-weight: 700;
+  font-size: 15.5px;
+  color: var(--m-text);
+}
+
+.announcement-item-message {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  color: var(--m-text-2);
+  line-height: 1.6;
+}
+
+.announcement-item-date {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--m-muted);
+}
+
+.announcement-list-item .ant-list-item-action {
+  margin-top: 6px !important;
+  margin-inline-start: -8px !important;
 }
 
 @media (max-width: 576px) {
