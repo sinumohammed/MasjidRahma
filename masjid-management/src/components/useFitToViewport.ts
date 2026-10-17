@@ -7,8 +7,11 @@ import { useEffect, useState, type RefObject } from 'react';
 // keyboard opens. visualViewport does (the part of the page on screen now),
 // so the chat gets shorter above the keyboard and the box stays reachable.
 // Recomputed on resize, rotation, keyboard open/close and visual-viewport
-// scroll. `bottomGap`: space to leave below (px); `min`: never shorter.
-export function useFitToViewport(ref: RefObject<HTMLElement | null>, { bottomGap = 0, min = 320 } = {}) {
+// scroll. `bottomGap`: space to leave below (px); `min`: never shorter;
+// `aboveBottomNav`: also end above the phone's bottom tab bar (App.tsx), which
+// is fixed over the bottom of the screen - without it the typing box sat
+// under the tabs. Not for the chat in the drawer, which covers the tabs.
+export function useFitToViewport(ref: RefObject<HTMLElement | null>, { bottomGap = 0, min = 320, aboveBottomNav = false } = {}) {
   const [height, setHeight] = useState<number | null>(null);
 
   useEffect(() => {
@@ -22,7 +25,9 @@ export function useFitToViewport(ref: RefObject<HTMLElement | null>, { bottomGap
         // The visible bottom, in the same coordinates as getBoundingClientRect.
         const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
         const top = el.getBoundingClientRect().top;
-        setHeight(Math.max(min, Math.floor(visibleBottom - top - bottomGap)));
+        const nav = aboveBottomNav ? document.querySelector('.app-bottom-nav') : null;
+        const navTop = nav ? nav.getBoundingClientRect().top : visibleBottom;
+        setHeight(Math.max(min, Math.floor(Math.min(visibleBottom, navTop) - top - bottomGap)));
       });
     };
     measure();
@@ -40,7 +45,7 @@ export function useFitToViewport(ref: RefObject<HTMLElement | null>, { bottomGap
       window.visualViewport?.removeEventListener('resize', measure);
       window.visualViewport?.removeEventListener('scroll', measure);
     };
-  }, [ref, bottomGap, min]);
+  }, [ref, bottomGap, min, aboveBottomNav]);
 
   return height;
 }

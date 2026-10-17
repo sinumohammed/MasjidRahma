@@ -21,6 +21,16 @@ export function appTheme(mode: ThemeMode): ThemeConfig {
       colorBorderSecondary: dark ? '#22332c' : '#e6e0d1',
       colorText: dark ? '#e7eee9' : '#18251f',
       colorTextSecondary: dark ? '#8fa198' : '#6b7a72',
+      // Notices (Alert, message): soft tints of the palette - generated from
+      // the deep emerald, antd's own came out a murky grey-green.
+      colorInfoBg: dark ? 'rgba(53, 185, 143, 0.12)' : '#e6f2ec',
+      colorInfoBorder: dark ? 'rgba(53, 185, 143, 0.35)' : '#bcdccb',
+      colorSuccessBg: dark ? 'rgba(53, 185, 143, 0.12)' : '#e6f2ec',
+      colorSuccessBorder: dark ? 'rgba(53, 185, 143, 0.35)' : '#bcdccb',
+      colorWarningBg: dark ? 'rgba(221, 178, 87, 0.12)' : '#f8efd9',
+      colorWarningBorder: dark ? 'rgba(221, 178, 87, 0.35)' : '#e8d2a0',
+      colorErrorBg: dark ? 'rgba(240, 122, 149, 0.12)' : '#fbe8ec',
+      colorErrorBorder: dark ? 'rgba(240, 122, 149, 0.35)' : '#efbfcb',
       fontFamily: "'Plus Jakarta Sans', 'Noto Sans Malayalam', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
       borderRadius: 10,
       borderRadiusLG: 16,

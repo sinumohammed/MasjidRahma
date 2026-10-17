@@ -206,7 +206,7 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
   // The chat ends at the bottom of the visible screen (above the keyboard on a
   // phone); on the page, a little space is left below it.
   // 200 px at the least: with the keyboard open a phone has about that much.
-  const fitHeight = useFitToViewport(shellRef, { bottomGap: embedded ? 0 : 16, min: 200 });
+  const fitHeight = useFitToViewport(shellRef, { bottomGap: embedded ? 0 : 16, min: 200, aboveBottomNav: !embedded });
 
   // The recording stops by itself when the speaker pauses; with auto-send the
   // words go straight out as the question (shown as the user's bubble).
