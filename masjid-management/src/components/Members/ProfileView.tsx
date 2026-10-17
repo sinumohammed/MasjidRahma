@@ -93,6 +93,10 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
     if (selectedYear === profile.currentYear && profile.member.payment_frequency === 'monthly') {
       setYearBreakdown(profile.monthlyBreakdown);
       setYearDues(profile.dues);
+      // A yearly member's per-year request may still have been running when
+      // the admin switched to this member; its cleanup skips the finally
+      // block, so clear the spinner here or it never stops.
+      setYearBreakdownLoading(false);
       return;
     }
 
