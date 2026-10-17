@@ -2915,6 +2915,56 @@ ai.get('/pending-dues', aiRoute(async (req) => {
   return inRupees(req.aiUser.isAdmin ? rows : { scope: ONLY_YOURS('dues'), pending: rows });
 }));
 
+// One year's dues, month by month - "my pending for last year", "what did
+// Sinu TK owe in 2025". The same calculation as the profile page's year
+// selector (computeMonthlyBreakdownForYear). /pending-dues and /me only give
+// what is owed now, so a past year had no answer (found by the user). A
+// member gets only their own year; the admin any member's (by search), or
+// their own household's when they have one.
+ai.get('/dues-by-year', aiRoute(async (req) => {
+  const today = getMasjidTodayParts();
+  const year = Number.parseInt(req.query.year, 10);
+  if (!Number.isInteger(year) || year < 2000 || year > today.year + 1) throw badRequest(`year must be a year like ${today.year - 1}`);
+  const search = searchOf(req);
+  let members;
+  if (search) {
+    const found = findMembers(search, await dbAll('SELECT * FROM members ORDER BY position ASC'));
+    if (!found.length) return noMatchFor(search);
+    members = req.aiUser.isAdmin ? found.slice(0, 5) : found.filter((m) => m.id === req.aiUser.memberId);
+    if (!members.length) throw forbidden("only the admin can see other members' dues");
+  } else if (req.aiUser.memberId) {
+    members = [await dbGet('SELECT * FROM members WHERE id = $1', [req.aiUser.memberId])].filter(Boolean);
+  } else {
+    throw badRequest('say which member (search) - this user is not linked to a member household');
+  }
+  const results = [];
+  for (const m of members) {
+    const { breakdown, dues } = await computeMonthlyBreakdownForYear(m, year, today);
+    results.push({
+      id: m.unique_id,
+      name: m.name.trim(),
+      nameInEnglishLetters: toLatin(m.name).trim(),
+      paymentPlan: m.payment_amount != null && m.payment_frequency ? { amount: Number(m.payment_amount), frequency: m.payment_frequency } : null,
+      year,
+      ...(dues.hasPlan
+        ? {
+            expected: dues.expected,
+            paid: dues.paid,
+            due: Math.max(Number(dues.due) || 0, 0),
+            ...(breakdown
+              ? {
+                  missedMonths: breakdown.filter((e) => e.status === 'missed').map((e) => e.label),
+                  partialMonths: breakdown.filter((e) => e.status === 'partial').map((e) => `${e.label} (paid ${e.paidAmount} of ${e.dueAmount})`),
+                  paidMonths: breakdown.filter((e) => e.status === 'paid').map((e) => e.label),
+                }
+              : {}),
+          }
+        : { note: 'No payment plan for this member' }),
+    });
+  }
+  return inRupees(req.aiUser.isAdmin ? { members: results } : { scope: ONLY_YOURS('dues'), members: results });
+}));
+
 // The same date-range rule as the app's own summary (dateRangeClause): both
 // sides cast to date, since stored dates may be YYYY-MM-DD or full timestamps.
 function aiDateRange(req) {

@@ -70,9 +70,19 @@ export const AI_OPENAPI = {
     '/ai/pending-dues': {
       get: {
         operationId: 'pending_dues',
-        summary: 'Members who owe dues now (pending payments): amount due, payment frequency, missed months. For a member: only their own, with a note saying so. With search: one member\'s dues ("dues of Sinu TK")',
+        summary: 'Members who owe dues now (pending payments): amount due, payment frequency, missed months. For a member: only their own, with a note saying so. With search: one member\'s dues ("dues of Sinu TK"). For an earlier year use dues_by_year',
         parameters: [
           { name: 'search', in: 'query', required: false, description: 'A member name in English letters or Malayalam ("Sinu TK" or "സിനു ടി കെ"), or a member id like MR#001', schema: { type: 'string' } },
+        ],
+      },
+    },
+    '/ai/dues-by-year': {
+      get: {
+        operationId: 'dues_by_year',
+        summary: 'One calendar year\'s dues for a member, month by month: expected, paid, still due, missed / partly paid / paid months - for a past or particular year ("my pending for last year", "dues of Sinu TK in 2025"). For a member: only their own',
+        parameters: [
+          { name: 'year', in: 'query', required: true, description: 'The calendar year, e.g. 2025 (work out "last year" from today\'s date)', schema: { type: 'integer' } },
+          { name: 'search', in: 'query', required: false, description: 'A member name in English letters or Malayalam, or a member id like MR#001; leave out for the asking member\'s own', schema: { type: 'string' } },
         ],
       },
     },
