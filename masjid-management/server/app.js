@@ -11,6 +11,7 @@ import jwt from 'jsonwebtoken';
 import webpush from 'web-push';
 import { waitUntil } from '@vercel/functions';
 import { AI_OPENAPI } from './aiOpenapi.js';
+import { aiMcpHandler } from './aiMcp.js';
 import { findMembers, toLatin } from './nameMatch.js';
 
 // Load server/.env by absolute path rather than relying on dotenv's default
@@ -2693,7 +2694,8 @@ app.post('/api/activity/delete', requireAdmin, async (req, res) => {
 // on Render), sent as "Authorization: Bearer <token>" - not the admin login,
 // so it can only read these endpoints and survives a password change. Without
 // MASJID_AI_TOKEN the whole section answers 503. The endpoints are described
-// for the AI in aiOpenapi.js (served at /api/ai/openapi.json).
+// for the AI in aiOpenapi.js (served at /api/ai/openapi.json). The same
+// endpoints are also MCP tools at /api/ai/mcp (aiMcp.js), for MCP clients.
 //
 // Every call also carries the logged-in user it is for (X-User-Token), so
 // the answers follow the user's role: the admin sees everything; a member
@@ -2717,6 +2719,18 @@ function aiUserToken(user) {
   return jwt.sign({ sub: user.id, isAdmin: Boolean(user.isAdmin), memberId: user.memberId ?? null, scope: 'ai-read' }, AI_USER_SECRET, { expiresIn: AI_USER_TOKEN_TTL });
 }
 const AI_GUEST_PATHS = new Set(['/me', '/today-duty', '/duty-on-date', '/duty-schedule', '/member-duty-days']);
+const AI_GUEST_REFUSAL = 'log in to the masjid app to see this - without logging in, only the food-duty schedule is available';
+
+// The user an AI call is for, from its X-User-Token; throws without a valid one.
+function aiUserFrom(req) {
+  try {
+    const claims = jwt.verify(String(req.get('x-user-token') ?? ''), AI_USER_SECRET);
+    if (claims.scope !== 'ai-read') throw new Error('wrong scope');
+    return { id: claims.sub, guest: claims.guest === true, isAdmin: claims.isAdmin === true, memberId: claims.memberId ?? null };
+  } catch {
+    throw new Error('a user token is required (X-User-Token missing or expired)');
+  }
+}
 
 function requireAiToken(req, res, next) {
   if (!MASJID_AI_TOKEN) return res.status(503).json({ error: 'AI access is not configured (MASJID_AI_TOKEN)' });
@@ -2725,16 +2739,15 @@ function requireAiToken(req, res, next) {
   if (!crypto.timingSafeEqual(sha256(given), sha256(MASJID_AI_TOKEN))) {
     return res.status(401).json({ error: 'AI access token required' });
   }
-  if (req.path === '/openapi.json') return next();
+  // The MCP server checks the user per tool call: listing its tools needs none.
+  if (req.path === '/openapi.json' || req.path === '/mcp') return next();
   try {
-    const claims = jwt.verify(String(req.get('x-user-token') ?? ''), AI_USER_SECRET);
-    if (claims.scope !== 'ai-read') throw new Error('wrong scope');
-    req.aiUser = { id: claims.sub, guest: claims.guest === true, isAdmin: claims.isAdmin === true, memberId: claims.memberId ?? null };
-  } catch {
-    return res.status(401).json({ error: 'a user token is required (X-User-Token missing or expired)' });
+    req.aiUser = aiUserFrom(req);
+  } catch (error) {
+    return res.status(401).json({ error: error.message });
   }
   if (req.aiUser.guest && !AI_GUEST_PATHS.has(req.path)) {
-    return res.status(403).json({ error: 'log in to the masjid app to see this - without logging in, only the food-duty schedule is available' });
+    return res.status(403).json({ error: AI_GUEST_REFUSAL });
   }
   next();
 }
@@ -2770,6 +2783,12 @@ const aiRoute = (fn) => async (req, res) => {
     res.status(error.status ?? 500).json({ error: error.status ? error.message : 'Server error' });
   }
 };
+// Each endpoint's handler, kept by path: the MCP tools (aiMcp.js) run the same ones.
+const aiHandlers = new Map();
+const aiGet = (path, fn) => {
+  aiHandlers.set(path, fn);
+  ai.get(path, aiRoute(fn));
+};
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
 // Every amount here is in rupees - said once per response. With bare numbers
 // ("due": 2100) the AI answered in dollars.
@@ -2778,7 +2797,7 @@ const inRupees = (data) => (Array.isArray(data) ? { amountsIn: AMOUNTS_IN, items
 
 ai.get('/openapi.json', (req, res) => res.json(AI_OPENAPI));
 
-ai.get('/today-duty', aiRoute(async () => {
+aiGet('/today-duty', async () => {
   const a = await getTodaysAssignment();
   return {
     date: a.date,
@@ -2787,13 +2806,13 @@ ai.get('/today-duty', aiRoute(async () => {
     swapped: a.swapped,
     ...(a.swapped ? { originallyScheduled: nameOf(a.originalMember) } : {}),
   };
-}));
+});
 
 // One day, any date: "tomorrow", "this Friday", "on 3 December". Found with
 // the planner: for "tomorrow" it asked duty-schedule with days=1, which is
 // today only. Dates up to a year ahead use the same day-by-day schedule as
 // the app (getSchedulePreview); others the yearly projection.
-ai.get('/duty-on-date', aiRoute(async (req) => {
+aiGet('/duty-on-date', async (req) => {
   const date = req.query.date;
   if (!isDateStr(date)) throw badRequest('date must be YYYY-MM-DD');
   const ahead = daysBetweenDates(todayInMasjidTimezone(), date);
@@ -2805,9 +2824,9 @@ ai.get('/duty-on-date', aiRoute(async (req) => {
   const data = await getYearlySchedule(year);
   const onDuty = data.members.find((m) => m.months[month - 1].some((d) => d.day === day && d.swapped !== 'away'));
   return { date, weekday: weekdayOf(date), member: onDuty ? { id: onDuty.unique_id, name: onDuty.name } : null, note: ahead < 0 ? 'projected from the rotation; past swaps may differ' : undefined };
-}));
+});
 
-ai.get('/duty-schedule', aiRoute(async (req) => {
+aiGet('/duty-schedule', async (req) => {
   const days = clampInt(req.query.days, 1, 60, 14);
   const preview = await getSchedulePreview(days);
   return preview.map((d) => ({
@@ -2816,9 +2835,9 @@ ai.get('/duty-schedule', aiRoute(async (req) => {
     member: nameOf(d.member),
     ...(d.swapped ? { swapped: true, originallyScheduled: nameOf(d.originalMember) } : {}),
   }));
-}));
+});
 
-ai.get('/member-duty-days', aiRoute(async (req) => {
+aiGet('/member-duty-days', async (req) => {
   const currentYear = Number(todayInMasjidTimezone().slice(0, 4));
   const year = clampInt(req.query.year, 2000, 2100, currentYear);
   const data = await getYearlySchedule(year);
@@ -2839,9 +2858,9 @@ ai.get('/member-duty-days', aiRoute(async (req) => {
       ),
     })),
   };
-}));
+});
 
-ai.get('/members', aiRoute(async (req) => {
+aiGet('/members', async (req) => {
   const members = await dbAll('SELECT * FROM members ORDER BY position ASC');
   const maySeePlan = (m) => req.aiUser.isAdmin || m.id === req.aiUser.memberId;
   const found = findMembers(searchOf(req), members);
@@ -2856,10 +2875,10 @@ ai.get('/members', aiRoute(async (req) => {
     // Another member's payment plan is the admin's to see.
     ...(maySeePlan(m) ? { paymentPlan: m.payment_amount != null && m.payment_frequency ? { amount: Number(m.payment_amount), frequency: m.payment_frequency } : null } : {}),
   })));
-}));
+});
 
 // Who is asking: "my dues", "my next duty" - the member's own record, or the admin.
-ai.get('/me', aiRoute(async (req) => {
+aiGet('/me', async (req) => {
   if (req.aiUser.guest) return { role: 'guest', note: 'Not logged in - only the food-duty schedule is available' };
   if (!req.aiUser.memberId) return { role: req.aiUser.isAdmin ? 'admin' : 'user', note: 'Not linked to a member household' };
   const m = await dbGet('SELECT * FROM members WHERE id = $1', [req.aiUser.memberId]);
@@ -2876,7 +2895,7 @@ ai.get('/me', aiRoute(async (req) => {
     dues: dueInfo.hasPlan ? { due: Math.max(Number(dueInfo.due) || 0, 0), ...(dueInfo.missedMonths?.length ? { missedMonths: dueInfo.missedMonths } : {}) } : null,
     nextDutyDays: schedule.filter((d) => d.member?.id === m.id).slice(0, 5).map((d) => ({ date: d.date, weekday: weekdayOf(d.date) })),
   });
-}));
+});
 
 // The admin: everyone who owes. A member: only themselves - and the answer
 // says so. Found live: a member asked (in Malayalam) for the list of pending
@@ -2887,7 +2906,7 @@ const ONLY_YOURS = (what) =>
   `Only the asking member's own ${what} - this member cannot see other members'. ` +
   `The full list is for the admin. An empty list means this member has none, not that nobody has any.`;
 
-ai.get('/pending-dues', aiRoute(async (req) => {
+aiGet('/pending-dues', async (req) => {
   let pending = (await getPendingDuesMembers()).filter((p) => req.aiUser.isAdmin || p.id === req.aiUser.memberId);
   // One member's dues ("dues of Sinu TK"): found among all members first, so
   // "has no pending dues" and "no such member" are told apart.
@@ -2913,7 +2932,7 @@ ai.get('/pending-dues', aiRoute(async (req) => {
   }));
   if (searched) return inRupees({ ...searched, ...(req.aiUser.isAdmin ? {} : { scope: ONLY_YOURS('dues') }), pending: rows });
   return inRupees(req.aiUser.isAdmin ? rows : { scope: ONLY_YOURS('dues'), pending: rows });
-}));
+});
 
 // One year's dues, month by month - "my pending for last year", "what did
 // Sinu TK owe in 2025". The same calculation as the profile page's year
@@ -2921,7 +2940,7 @@ ai.get('/pending-dues', aiRoute(async (req) => {
 // what is owed now, so a past year had no answer (found by the user). A
 // member gets only their own year; the admin any member's (by search), or
 // their own household's when they have one.
-ai.get('/dues-by-year', aiRoute(async (req) => {
+aiGet('/dues-by-year', async (req) => {
   const today = getMasjidTodayParts();
   const year = Number.parseInt(req.query.year, 10);
   if (!Number.isInteger(year) || year < 2000 || year > today.year + 1) throw badRequest(`year must be a year like ${today.year - 1}`);
@@ -2994,7 +3013,7 @@ ai.get('/dues-by-year', aiRoute(async (req) => {
     });
   }
   return inRupees(req.aiUser.isAdmin ? { members: results } : { scope: ONLY_YOURS('dues'), members: results });
-}));
+});
 
 // The same date-range rule as the app's own summary (dateRangeClause): both
 // sides cast to date, since stored dates may be YYYY-MM-DD or full timestamps.
@@ -3005,7 +3024,7 @@ function aiDateRange(req) {
   return dateRangeClause(req);
 }
 
-ai.get('/finance-summary', aiRoute(async (req) => {
+aiGet('/finance-summary', async (req) => {
   adminOnly(req, "the masjid's accounts");
   const { clause, params } = aiDateRange(req);
   const totals = await dbAll(`SELECT type, SUM(amount) AS total FROM transactions ${clause} GROUP BY type`, params);
@@ -3030,9 +3049,9 @@ ai.get('/finance-summary', aiRoute(async (req) => {
     byCategory: byCategory.map((c) => ({ type: c.type, category: c.category, count: Number(c.count), total: Number(c.total) })),
     bankBalancesNow: banks.map((b) => ({ bank: b.name, balance: Number(b.balance) })),
   });
-}));
+});
 
-ai.get('/transactions', aiRoute(async (req) => {
+aiGet('/transactions', async (req) => {
   const { clause, params } = aiDateRange(req);
   const where = [clause.replace(/^WHERE /, '').replace(/\bdate::date\b/g, 't.date::date')].filter(Boolean);
   if (req.query.type !== undefined) {
@@ -3075,13 +3094,25 @@ ai.get('/transactions', aiRoute(async (req) => {
     ...(t.bank ? { bank: t.bank } : {}),
   }));
   return inRupees(req.aiUser.isAdmin ? list : { scope: ONLY_YOURS('payments and transactions'), transactions: list });
-}));
+});
 
-ai.get('/announcements', aiRoute(async (req) => {
+aiGet('/announcements', async (req) => {
   const rows = await dbAll('SELECT title, message, created_at FROM announcements ORDER BY created_at DESC LIMIT $1', [clampInt(req.query.limit, 1, 50, 10)]);
   // The masjid's day, like every other date here - not the UTC day.
   return rows.map((a) => ({ date: todayFormatter.format(new Date(a.created_at)), title: a.title, message: a.message }));
+});
+
+// The same endpoints as MCP tools (aiMcp.js). Stateless: POST only - no
+// event stream to hold open in a serverless function.
+ai.post('/mcp', aiMcpHandler({
+  openapi: AI_OPENAPI,
+  handlers: aiHandlers,
+  userFrom: aiUserFrom,
+  guestPaths: AI_GUEST_PATHS,
+  guestRefusal: AI_GUEST_REFUSAL,
+  info: { name: 'masjid-rahma', title: 'Masjid Rahma', version: '1.0.0' },
 }));
+ai.all('/mcp', (req, res) => res.status(405).set('Allow', 'POST').json({ error: 'POST only (stateless MCP server)' }));
 
 app.use('/api/ai', ai);
 

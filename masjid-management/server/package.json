@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@vercel/functions": "^3.7.6",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
