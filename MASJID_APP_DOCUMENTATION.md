@@ -9,6 +9,25 @@
 
 ## 🆕 RECENT UPDATES (2026-10-17)
 
+### New look: emerald and gold, every screen
+- **Tokens**: `src/index.css` holds the palette (`--m-*`, light and dark via `data-theme`), `src/theme.ts` gives antd the same colours (incl. soft Alert/message tints). Use `var(--m-...)`, never a hard-coded colour; shared pieces: `.m-page`, `.m-page-head` (its title shows on phones only - the header names the page on a computer), `.m-card`, `.m-toolbar`, `.m-table-card`, `.m-pill` (`is-gold` / `is-rose` / `is-blue` / `is-muted`), `.m-amount.is-in / .is-out`. Money as `₹2,750` (`utils/money.ts`), dates as "16 Oct 2026" / "17 Oct 2026, 11:18 am" (`utils/dates.ts`). The old Vite starter styles (a framed 1126 px `#root`, centred text) are gone.
+- **Shell** (`App.tsx`, `App.css`): deep-green sidebar with the mark (`BrandMark.tsx`), gold bar on the current page; light sticky header with the page title; **phones**: a bottom tab bar (Home, Schedule, Assistant, Accounts / Profile / Log in, More) instead of the floating assistant button. The Assistant page ends above the tab bar (`useFitToViewport` `aboveBottomNav`).
+- **Pages**: dashboard (hero duty card, tone per tile), members (summary, segmented filter, notification ring), member form, yearly schedule (legend, today as a gold band), profile, transactions (a ⋯ menu per row and "Filters" on phones), transaction form, banks, activity, settings (You / The masjid / Help), announcements and My Notifications (a feed). Wide tables become one compact row on a phone (`Grid.useBreakpoint`).
+- **Dashboard "Money"** (`ChartsPanel.tsx`): This year / Last 12 months / All time; month-by-month paired bars with the answer written above; where the money goes / comes from (amount, share; a row opens its transactions). Money in emerald, out gold (`--m-chart-in` / `--m-chart-out`) - red/green failed a colour-blindness check. "Opening Balance" income is left out of these charts and named under them.
+- The old global `.form-title` / `.form-select` / `.form-number` / `.form-textarea` classes (TransactionForm.css) are gone - they reached other forms.
+
+### About the masjid
+Guests see it on the home page instead of the login box (log in from the header, the phone's tab, or the invitation under it); everyone has "About" in the menu (`src/components/About/`). Admin edits it in Settings → About the masjid: tagline, founded, address, story, and people (photo, name, role, "serving today" or "founder", since, order). Server: `masjid_people` table, `app_settings` `about.*`, `GET /api/about` (public), photos at `/api/about/people/:id/photo` (cached, versioned), `PUT/POST/DELETE /api/admin/about...`. JSON body limit is 1 MB for photos.
+
+### Member photos uploaded in the app
+Members → edit → Change photo / Remove photo (admin): resized in the browser to 640 px JPEG, saved at once, stored in `member_photos` (not on `members`, so lists stay small), served at `/api/members/photo/:uniqueId` (public, 5 min cache + ETag). `MemberAvatar` tries the upload first, then the files in `public/assets/members/` (now also `.JPG` - Vercel's names are case-sensitive, so `MR006.JPG` never showed before).
+
+### Assistant: tables and charts
+The server asks the AI service with `display: { tables: true, charts: true }`; `AssistantAnswer.tsx` / `answerFormat.ts` render Markdown tables and draw ```chart blocks (bar, pie with amounts in the legend, line; no animation). Checked by the AI service's `eval:masjid ONLY=tables`.
+
+### Local previews
+`npm run dev:live` serves this frontend on the Mac (and the LAN) with `/api` forwarded to the live backend - the real data, so saving really saves. For a throwaway backend: run `server/index.js` with `DATABASE_URL` pointing at a local test database and start Vite with `MASJID_API_PROXY=http://localhost:<port> VITE_API_URL=/api`.
+
 ### The AI API as an MCP server (`/api/ai/mcp`)
 `server/aiMcp.js` offers the `/api/ai/*` endpoints as MCP tools (official MCP SDK, stateless, `POST /api/ai/mcp` only - no event stream held open in a Vercel function). The 11 tools are made from `AI_OPENAPI` (same names, descriptions and parameters), all marked read-only, and a call runs the endpoint's own handler (`aiGet` keeps them by path) with the same roles and refusal reasons. Listing the tools needs `MASJID_AI_TOKEN`; a call also needs the user (`X-User-Token`, `aiUserFrom`). The AI service's masjid entry uses it since 2026-10-17 (its `apps/masjid-mcp.json`); `apps/masjid.json` puts it back on OpenAPI. A new endpoint added with `aiGet` and described in `aiOpenapi.js` appears in both.
 
