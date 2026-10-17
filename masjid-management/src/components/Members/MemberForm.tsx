@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Form, Input, InputNumber, Select, Button, Switch, Space, DatePicker, message } from 'antd';
 import dayjs from 'dayjs';
-import { createMember, updateMember, type Member } from '../../services/api';
+import { CameraOutlined } from '@ant-design/icons';
+import { createMember, updateMember, setMemberPhoto, MEMBER_PHOTO_EVENT, type Member } from '../../services/api';
+import { resizePhoto } from '../About/resizePhoto';
+import MemberAvatar from './MemberAvatar';
 import './MemberForm.css';
 
 interface MemberFormProps {
@@ -15,6 +18,33 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
   const [loading, setLoading] = useState(false);
   const isEditMode = Boolean(member);
   const paymentFrequency = Form.useWatch('paymentFrequency', form);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+
+  // The photo is saved at once, apart from the form's Save: picking it is the
+  // decision. Every avatar of this member on the screen updates.
+  const savePhoto = async (photo: string | null) => {
+    if (!member) return;
+    setPhotoBusy(true);
+    try {
+      await setMemberPhoto(member.id, photo);
+      window.dispatchEvent(new CustomEvent(MEMBER_PHOTO_EVENT, { detail: member.unique_id }));
+      message.success(photo ? 'Photo saved' : 'Photo removed');
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Failed to save the photo');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const pickPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      await savePhoto(await resizePhoto(file));
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Could not read that photo');
+    }
+  };
 
   const handleSubmit = async (values: any) => {
     try {
@@ -76,6 +106,30 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
 
       {isEditMode && member && (
         <div className="member-form-id-badge">{member.unique_id}</div>
+      )}
+
+      {isEditMode && member && (
+        <div className="member-form-photo">
+          <MemberAvatar key={member.unique_id} uniqueId={member.unique_id} size={84} />
+          <Space direction="vertical" size={4}>
+            <Button icon={<CameraOutlined />} onClick={() => photoInput.current?.click()} loading={photoBusy}>
+              Change photo
+            </Button>
+            <Button type="text" danger size="small" onClick={() => savePhoto(null)} disabled={photoBusy}>
+              Remove uploaded photo
+            </Button>
+          </Space>
+          <input
+            ref={photoInput}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              pickPhoto(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+        </div>
       )}
 
       <Form

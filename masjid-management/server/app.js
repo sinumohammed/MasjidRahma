@@ -328,6 +328,17 @@ async function initializeDatabase() {
     )
   `);
 
+  // Member photos uploaded in the app (the member's edit form), apart from
+  // members so the member lists never carry them. Before this, photos were
+  // files in public/assets/members/ - still shown when no upload exists.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS member_photos (
+      member_id TEXT PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE,
+      photo TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   console.log('Database tables ready');
   await backfillMemberUsers();
   await seedDefaultContacts();
@@ -2105,6 +2116,52 @@ app.post('/api/members', requireAdmin, async (req, res) => {
 });
 
 // Update a member (home) - also used to deactivate/reactivate (soft delete)
+// Photos (member photos, About the masjid): a data URL made in the browser.
+const PHOTO_DATA_URL = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+const MAX_PHOTO_CHARS = 700000; // ~500 KB of image
+
+// A member's uploaded photo, by member code (MR#001) - public, as the photo
+// files always were (today's duty card shows it to visitors). 5 minutes of
+// browser cache, then the ETag answers 304 until the photo changes; "none"
+// is cached the same, so a list of members does not ask again on every view.
+app.get('/api/members/photo/:uniqueId', async (req, res) => {
+  try {
+    const row = await dbGet(
+      'SELECT p.photo, p.updated_at FROM member_photos p JOIN members m ON m.id = p.member_id WHERE m.unique_id = $1',
+      [req.params.uniqueId]
+    );
+    res.set('Cache-Control', 'public, max-age=300');
+    const m = row?.photo.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/);
+    if (!m) return res.status(404).end();
+    res.set('ETag', `"${new Date(row.updated_at).getTime()}"`).type(m[1]).send(Buffer.from(m[2], 'base64'));
+  } catch {
+    res.status(500).end();
+  }
+});
+
+// Admin: set (a data URL, resized in the browser) or remove (null) a photo.
+app.put('/api/members/:id/photo', requireAdmin, async (req, res) => {
+  const photo = req.body?.photo;
+  if (photo !== null && (typeof photo !== 'string' || photo.length > MAX_PHOTO_CHARS || !PHOTO_DATA_URL.test(photo))) {
+    return res.status(400).json({ error: 'photo: a JPEG, PNG or WebP image up to about 500 KB, or null to remove it' });
+  }
+  try {
+    const member = await dbGet('SELECT id, unique_id FROM members WHERE id = $1', [req.params.id]);
+    if (!member) return res.status(404).json({ error: 'no such member' });
+    if (photo === null) await dbRun('DELETE FROM member_photos WHERE member_id = $1', [member.id]);
+    else {
+      await dbRun(
+        `INSERT INTO member_photos (member_id, photo, updated_at) VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (member_id) DO UPDATE SET photo = EXCLUDED.photo, updated_at = CURRENT_TIMESTAMP`,
+        [member.id, photo]
+      );
+    }
+    res.json({ uniqueId: member.unique_id, hasPhoto: photo !== null });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.put('/api/members/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -2581,8 +2638,6 @@ app.delete('/api/announcements/:id', requireAdmin, async (req, res) => {
 // --- About the masjid (public read, admin edit) ---
 const ABOUT_FIELDS = { story: 4000, founded: 30, address: 200, tagline: 160 };
 const PEOPLE_GROUPS = ['leadership', 'founders'];
-const PHOTO_DATA_URL = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
-const MAX_PHOTO_CHARS = 700000; // ~500 KB of image
 
 async function aboutText() {
   const rows = await dbAll("SELECT key, value FROM app_settings WHERE key LIKE 'about.%'");

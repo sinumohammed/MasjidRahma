@@ -183,3 +183,11 @@
 :root[data-theme='dark'] .member-form .ant-form-item-label > label {
   color: #d9d9d9;
 }
+
+/* The member's photo, uploaded here (saved at once). */
+.member-form-photo {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 4px 0 20px;
+}

@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { UserOutlined } from '@ant-design/icons';
+import { memberPhotoUrl, MEMBER_PHOTO_EVENT } from '../../services/api';
 import './MemberAvatar.css';
 
-const EXTENSIONS = ['png', 'jpg', 'jpeg'] as const;
-type Extension = (typeof EXTENSIONS)[number];
+const EXTENSIONS = ['png', 'jpg', 'jpeg', 'JPG'] as const;
 
 interface MemberAvatarProps {
   // Falsy (e.g. a transaction with no linked member) skips the photo lookup
@@ -21,15 +21,37 @@ function assetFileName(uniqueId: string): string {
   return uniqueId.replace(/[^a-zA-Z0-9]/g, '');
 }
 
+// Where a member's photo may be, in order: the photo uploaded in the app
+// (the member's edit form), then the older files in public/assets/members/
+// (.JPG too: Vercel's file names are case-sensitive).
+function sources(uniqueId: string, version: number): string[] {
+  const file = assetFileName(uniqueId);
+  return [memberPhotoUrl(uniqueId, version), ...EXTENSIONS.map((ext) => `/assets/members/${file}.${ext}`)];
+}
+
 // Callers must pass `key={uniqueId}` so React remounts (rather than updates)
-// this component when the member changes - otherwise extIndex would carry
-// over from the previous member and briefly show a stale fallback/attempt.
+// this component when the member changes - otherwise the source index would
+// carry over from the previous member and briefly show a stale photo.
 export default function MemberAvatar({ uniqueId, size = 56, fallbackIcon, className }: MemberAvatarProps) {
-  const [extIndex, setExtIndex] = useState(0);
+  const [index, setIndex] = useState(0);
+  const [version, setVersion] = useState(0);
+
+  // A photo changed on this screen: try again from the uploaded one.
+  useEffect(() => {
+    const onUpdated = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === uniqueId) {
+        setVersion(Date.now());
+        setIndex(0);
+      }
+    };
+    window.addEventListener(MEMBER_PHOTO_EVENT, onUpdated);
+    return () => window.removeEventListener(MEMBER_PHOTO_EVENT, onUpdated);
+  }, [uniqueId]);
 
   const style = { width: size, height: size, fontSize: Math.round(size * 0.55) };
+  const list = uniqueId ? sources(uniqueId, version) : [];
 
-  if (!uniqueId || extIndex >= EXTENSIONS.length) {
+  if (index >= list.length) {
     return (
       <div className={`member-avatar-icon ${className || ''}`} style={style}>
         {fallbackIcon ?? <UserOutlined />}
@@ -37,16 +59,13 @@ export default function MemberAvatar({ uniqueId, size = 56, fallbackIcon, classN
     );
   }
 
-  const ext: Extension = EXTENSIONS[extIndex];
-  const fileName = assetFileName(uniqueId);
-
   return (
     <img
-      src={`/assets/members/${fileName}.${ext}`}
-      alt={uniqueId}
+      src={list[index]}
+      alt={uniqueId ?? ''}
       className={`member-avatar-photo ${className || ''}`}
       style={style}
-      onError={() => setExtIndex((i) => i + 1)}
+      onError={() => setIndex((i) => i + 1)}
     />
   );
 }

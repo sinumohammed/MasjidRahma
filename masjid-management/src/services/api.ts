@@ -981,3 +981,17 @@ export const deletePerson = (id: string) =>
 
 export const reorderPeople = (ids: string[]) =>
   aboutRequest<{ people: MasjidPerson[] }>('/admin/about/people-order', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ ids }) }, 'Failed to save the order');
+
+// Member photos uploaded in the app (before: files in public/assets/members/).
+export const memberPhotoUrl = (uniqueId: string, version = 0) =>
+  `${API_BASE_URL}/members/photo/${encodeURIComponent(uniqueId)}${version ? `?v=${version}` : ''}`;
+
+// A new photo shows at once in every avatar of that member on this screen.
+export const MEMBER_PHOTO_EVENT = 'member-photo-updated';
+
+export const setMemberPhoto = (id: string, photo: string | null) =>
+  aboutRequest<{ uniqueId: string; hasPhoto: boolean }>(
+    `/members/${encodeURIComponent(id)}/photo`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ photo }) },
+    'Failed to save the photo'
+  );
