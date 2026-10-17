@@ -9,6 +9,12 @@
 
 ## 🆕 RECENT UPDATES (2026-10-17)
 
+### The AI API as an MCP server (`/api/ai/mcp`)
+`server/aiMcp.js` offers the `/api/ai/*` endpoints as MCP tools (official MCP SDK, stateless, `POST /api/ai/mcp` only - no event stream held open in a Vercel function). The 11 tools are made from `AI_OPENAPI` (same names, descriptions and parameters), all marked read-only, and a call runs the endpoint's own handler (`aiGet` keeps them by path) with the same roles and refusal reasons. Listing the tools needs `MASJID_AI_TOKEN`; a call also needs the user (`X-User-Token`, `aiUserFrom`). The AI service's masjid entry uses it since 2026-10-17 (its `apps/masjid-mcp.json`); `apps/masjid.json` puts it back on OpenAPI. A new endpoint added with `aiGet` and described in `aiOpenapi.js` appears in both.
+
+### Claude access (MCP): personal tokens for Claude Code
+Settings → "Claude access (MCP)" (admin, `src/components/McpTokensCard.tsx`): Create shows a token `mcp_...` once, with the ready command `claude mcp add -s user --transport http masjid <API>/ai/mcp --header "Authorization: Bearer mcp_..."`. Stored in `mcp_tokens` as a SHA-256 hash with the user, the last 4 characters, created and last used; Revoke deletes the row. In `requireAiToken` an `mcp_` bearer opens `/api/ai/mcp` only, in place of `MASJID_AI_TOKEN` and the user token; the user's role is read at each use (no longer admin: 403); it is not a login. Admin only for now - what Claude reads goes to Anthropic. Endpoints: `GET/POST/DELETE /api/admin/mcp-tokens`. Checked by the AI service's `eval:masjid` (section 1c).
+
 ### Assistant: last year's dues for everyone
 `GET /api/ai/dues-by-year?year=` with no member named now gives the admin every member still owing that year, with the total (`everyone=true` asks for it explicitly; a member asking for everyone gets 403). Before, an admin not linked to a household got a 400 and "previous year pending" had no answer. Described in `server/aiOpenapi.js`; after deploying a change there, run `npm run app -- refresh masjid` in the AI service so it reads the new description.
 
