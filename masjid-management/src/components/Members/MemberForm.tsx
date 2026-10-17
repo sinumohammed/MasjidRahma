@@ -102,11 +102,10 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
 
   return (
     <div className="member-form-container">
-      <h2 className="form-title">{isEditMode ? '✏️ Edit Member' : '➕ Add New Member'}</h2>
-
-      {isEditMode && member && (
-        <div className="member-form-id-badge">{member.unique_id}</div>
-      )}
+      <div className="member-form-head">
+        <h2 className="member-form-title">{isEditMode ? 'Edit member' : 'Add a member'}</h2>
+        {isEditMode && member && <span className="m-pill">{member.unique_id}</span>}
+      </div>
 
       {isEditMode && member && (
         <div className="member-form-photo">
@@ -116,7 +115,7 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
               Change photo
             </Button>
             <Button type="text" danger size="small" onClick={() => savePhoto(null)} disabled={photoBusy}>
-              Remove uploaded photo
+              Remove photo
             </Button>
           </Space>
           <input
@@ -136,6 +135,7 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        requiredMark={false}
         className="member-form"
         initialValues={
           member
@@ -161,7 +161,7 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
           name="name"
           rules={[{ required: true, message: 'Please enter a name' }]}
         >
-          <Input placeholder="e.g. Rahman Family" className="form-input" />
+          <Input placeholder="e.g. Rahman Family" />
         </Form.Item>
 
         <Form.Item
@@ -169,7 +169,7 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
           name="address"
           rules={[{ required: true, message: 'Please enter an address' }]}
         >
-          <Input.TextArea placeholder="Home address" rows={2} className="form-textarea" />
+          <Input.TextArea placeholder="Home address" rows={2} />
         </Form.Item>
 
         <Form.Item
@@ -180,7 +180,7 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
             { pattern: /^[0-9+\-() ]{7,20}$/, message: 'Enter a valid phone number' },
           ]}
         >
-          <Input placeholder="e.g. +1 555 123 4567" className="form-input" />
+          <Input placeholder="e.g. 98765 43210" inputMode="tel" />
         </Form.Item>
 
         <Form.Item
@@ -196,11 +196,11 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
             },
           ]}
         >
-          <InputNumber placeholder="e.g. 4" min={1} step={1} className="form-number" />
+          <InputNumber placeholder="e.g. 4" min={1} step={1} style={{ width: '100%' }} />
         </Form.Item>
 
         <Form.Item label="Recurring Payment Amount (optional)" name="paymentAmount">
-          <InputNumber placeholder="e.g. 500" min={0} step={1} className="form-number" style={{ width: '100%' }} />
+          <InputNumber placeholder="e.g. 500" min={0} step={1} style={{ width: '100%' }} />
         </Form.Item>
 
         <Form.Item label="Payment Frequency" name="paymentFrequency">

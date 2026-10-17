@@ -33,12 +33,12 @@ import TodayAssignmentCard from './Members/TodayAssignmentCard';
 import ProfileView from './Members/ProfileView';
 import AboutMasjid from './About/AboutMasjid';
 import { useSettings } from '../context/SettingsContext';
+import { money } from '../utils/money';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
 const MASJID_PAYMENT_CATEGORY = 'Masjid payment';
-// ₹42,300 - Indian digit grouping, paise only when there are any.
-const money = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
 const IMAM_SALARY_CATEGORY = 'Imam Salary';
 const STAFF_SALARY_CATEGORY = 'Staff Salary';
 const SALARY_COLORS = ['#0f6b52', '#b07d1c'];

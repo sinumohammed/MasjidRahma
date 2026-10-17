@@ -1,74 +1,36 @@
-.members-list-container {
-  padding: 24px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  min-height: 100vh;
-  border-radius: 8px;
+.members-page .m-page-head {
+  flex-wrap: nowrap;
+  align-items: flex-start;
 }
 
-.members-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
+.members-page .add-member-btn {
+  flex: 0 0 auto;
 }
 
-.members-title {
-  font-size: 32px;
-  font-weight: bold;
-  color: #1f2937;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  margin: 0;
-}
-
-.add-member-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  height: 40px;
-  padding: 0 24px;
-  font-weight: 600;
-}
-
-.members-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 20px;
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.filter-search {
-  flex: 1 1 240px;
-}
-
-.filter-select {
-  min-width: 160px;
+.members-page .filter-search {
+  flex: 1 1 260px;
 }
 
 .members-name-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  min-width: 0;
 }
 
+/* The ring says whether the member gets notifications on a phone. */
 .members-avatar-ring {
   flex-shrink: 0;
   display: inline-flex;
   border-radius: 50%;
   padding: 2px;
-  border: 2px solid #bfbfbf;
+  border: 2px solid var(--m-border-strong);
   line-height: 0;
 }
 
 .members-avatar-ring.online {
-  border-color: #52c41a;
-  box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.15);
-}
-
-.members-avatar-ring.offline {
-  border-color: #d9d9d9;
+  border-color: var(--m-primary);
+  box-shadow: 0 0 0 3px var(--m-primary-soft);
 }
 
 .members-name-text-wrap {
@@ -76,14 +38,16 @@
 }
 
 .members-name-text {
-  font-weight: 600;
+  font-weight: 700;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
 }
 
 .members-active-tick {
-  color: #52c41a;
+  color: var(--m-primary);
   font-size: 13px;
 }
 
@@ -91,96 +55,63 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 2px;
+  gap: 4px 10px;
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--m-muted);
 }
 
 .members-name-id {
-  font-size: 12px;
-  color: #8c8c8c;
+  font-variant-numeric: tabular-nums;
 }
 
-.members-type-tag {
-  margin: 0;
-  font-size: 11px;
-  line-height: 16px;
-  padding: 0 6px;
+.members-phone,
+.members-phone-inline {
+  color: var(--m-text-2);
+  font-variant-numeric: tabular-nums;
 }
 
-.members-family-count {
-  font-size: 12px;
-  color: #8c8c8c;
+.members-phone:hover,
+.members-phone-inline:hover {
+  color: var(--m-primary);
 }
 
-:root[data-theme='dark'] .members-name-id,
-:root[data-theme='dark'] .members-family-count {
-  color: #a0a0a0;
+/* The phone column shows on a wide screen; on a phone it is in the name cell. */
+.members-phone-inline {
+  display: none;
+  align-items: center;
+  gap: 4px;
 }
 
-:root[data-theme='dark'] .members-avatar-ring.offline {
-  border-color: #595959;
-}
-
-.members-table {
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.members-table :global(.ant-table) {
-  border-radius: 12px;
-}
-
-/* Dark Theme Overrides */
-:root[data-theme='dark'] .members-list-container {
-  background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
-}
-
-:root[data-theme='dark'] .members-title {
-  color: #e5e7eb;
-  text-shadow: none;
-}
-
-:root[data-theme='dark'] .members-filters,
-:root[data-theme='dark'] .members-table {
-  background: #1f1f1f;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .members-list-container {
-    padding: 16px;
+@media (max-width: 767px) {
+  .members-phone-inline {
+    display: inline-flex;
   }
 
-  .members-title {
-    font-size: 20px;
+  .members-page .ant-table-cell {
+    padding: 12px 10px !important;
   }
 
-  .members-filters {
-    flex-direction: column;
-  }
-
-  .filter-search {
-    flex: 1 1 auto;
-    width: 100%;
-  }
-
-  .filter-select {
-    width: 100%;
-  }
-
-  .add-member-btn {
-    width: 40px;
-    height: 40px;
+  .add-member-btn.ant-btn {
+    width: 44px;
+    height: 44px;
     padding: 0;
     border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .add-member-btn-label {
     display: none;
+  }
+
+  .members-page .m-toolbar .ant-segmented {
+    width: 100%;
+  }
+
+  .members-page .m-toolbar .ant-segmented-group {
+    display: flex;
+  }
+
+  .members-page .m-toolbar .ant-segmented-item {
+    flex: 1;
   }
 }

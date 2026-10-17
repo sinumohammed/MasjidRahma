@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Table, Tag, Button, Input, Select, Space, Modal, Alert, Tooltip } from 'antd';
-import { PlusOutlined, EditOutlined, SearchOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { Table, Button, Input, Segmented, Modal, Alert, Tooltip } from 'antd';
+import { PlusOutlined, EditOutlined, SearchOutlined, CheckCircleFilled, PhoneOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { getMembers, type Member, type MemberType } from '../../services/api';
 import MemberForm from './MemberForm';
@@ -52,6 +52,9 @@ export default function MembersList({ initialTypeFilter }: MembersListProps) {
     });
   }, [members, searchText, typeFilter]);
 
+  const inRotation = members.filter((m) => m.member_type === 'regular' && m.active).length;
+  const withNotifications = members.filter((m) => m.hasPushSubscription).length;
+
   const handleAddClick = () => {
     setEditingMember(undefined);
     setIsModalOpen(true);
@@ -94,13 +97,17 @@ export default function MembersList({ initialTypeFilter }: MembersListProps) {
             </div>
             <div className="members-name-meta">
               <span className="members-name-id">{record.unique_id}</span>
-              <Tag
-                color={record.member_type === 'non_rotation' ? 'orange' : 'blue'}
-                className="members-type-tag"
-              >
-                {record.member_type === 'non_rotation' ? 'Non-Rotation' : 'Regular'}
-              </Tag>
-              <span className="members-family-count">👪 {record.member_count}</span>
+              <span className={`m-pill ${record.member_type === 'non_rotation' ? 'is-gold' : ''}`}>
+                {record.member_type === 'non_rotation' ? 'Non-rotation' : 'Regular'}
+              </span>
+              <span className="members-family-count">
+                {record.member_count} {record.member_count === 1 ? 'person' : 'people'}
+              </span>
+              {record.phone && (
+                <a className="members-phone-inline" href={`tel:${record.phone.replace(/\s+/g, '')}`}>
+                  <PhoneOutlined /> {record.phone}
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -110,19 +117,28 @@ export default function MembersList({ initialTypeFilter }: MembersListProps) {
       title: 'Phone',
       dataIndex: 'phone',
       key: 'phone',
-      width: 140,
+      width: 150,
+      responsive: ['md'],
+      render: (phone: string) =>
+        phone ? (
+          <a className="members-phone" href={`tel:${phone.replace(/\s+/g, '')}`}>
+            {phone}
+          </a>
+        ) : (
+          '-'
+        ),
     },
     ...(isAdmin
       ? [
           {
-            title: 'Actions',
+            title: '',
             key: 'actions',
-            width: 90,
-            fixed: 'right' as const,
+            width: 56,
+            align: 'right' as const,
             render: (_: unknown, record: Member) => (
-              <Space>
-                <Button icon={<EditOutlined />} size="small" onClick={() => handleEditClick(record)} />
-              </Space>
+              <Tooltip title="Edit">
+                <Button icon={<EditOutlined />} type="text" onClick={() => handleEditClick(record)} aria-label={`Edit ${record.name}`} />
+              </Tooltip>
             ),
           },
         ]
@@ -130,54 +146,44 @@ export default function MembersList({ initialTypeFilter }: MembersListProps) {
   ];
 
   return (
-    <div className="members-list-container">
-      <div className="members-header">
-        <h1 className="members-title">🏠 Members</h1>
+    <div className="m-page members-page">
+      <div className="m-page-head">
+        <div className="m-page-head-text">
+          <h1 className="m-page-title">Members</h1>
+          <span className="m-page-sub">
+            {members.length} households · {inRotation} in the food rotation · {withNotifications} with notifications on
+          </span>
+        </div>
         {isAdmin && (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            size="large"
-            onClick={handleAddClick}
-            className="add-member-btn"
-          >
-            <span className="add-member-btn-label">Add Member</span>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddClick} className="add-member-btn">
+            <span className="add-member-btn-label">Add member</span>
           </Button>
         )}
       </div>
 
-      {error && (
-        <Alert
-          message="Error Loading Members"
-          description={error}
-          type="error"
-          showIcon
-          style={{ marginBottom: '16px' }}
-        />
-      )}
+      {error && <Alert message="Could not load the members" description={error} type="error" showIcon />}
 
-      <div className="members-filters">
+      <div className="m-card m-toolbar">
         <Input
-          placeholder="Search by ID, name, or address"
+          placeholder="Search by name, member ID, address or phone"
           prefix={<SearchOutlined />}
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
           allowClear
           className="filter-search"
         />
-        <Select
-          placeholder="Type"
-          value={typeFilter}
-          onChange={setTypeFilter}
-          allowClear
-          className="filter-select"
+        <Segmented
+          value={typeFilter ?? 'all'}
+          onChange={(v) => setTypeFilter(v === 'all' ? undefined : (v as MemberType))}
           options={[
+            { label: 'All', value: 'all' },
             { label: 'Regular', value: 'regular' },
-            { label: 'Non-Rotation', value: 'non_rotation' },
+            { label: 'Non-rotation', value: 'non_rotation' },
           ]}
         />
       </div>
 
+      <div className="m-card m-table-card">
       <Table
         columns={columns}
         dataSource={filteredMembers}
@@ -185,8 +191,9 @@ export default function MembersList({ initialTypeFilter }: MembersListProps) {
         loading={loading}
         pagination={{ defaultPageSize: 10, showSizeChanger: true }}
         className="members-table"
-        scroll={{ x: 'max-content' }}
+        locale={{ emptyText: searchText || typeFilter ? 'No member matches' : 'No members yet' }}
       />
+      </div>
 
       <Modal
         title={null}

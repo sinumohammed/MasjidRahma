@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Card, Table, Tag, Spin, Alert, Statistic, Row, Col, Select, Empty, Button } from 'antd';
-import { LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { Card, Table, Spin, Alert, Select, Empty, Button } from 'antd';
+import { LeftOutlined, RightOutlined, PhoneOutlined, EnvironmentOutlined, IdcardOutlined, ArrowUpOutlined, ArrowDownOutlined, FileDoneOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
   getMyProfile,
@@ -17,6 +17,7 @@ import {
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
 import MemberAvatar from './MemberAvatar';
+import { money } from '../../utils/money';
 import './ProfileView.css';
 
 interface ProfileViewProps {
@@ -126,7 +127,7 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
       dataIndex: 'type',
       key: 'type',
       render: (type: string) => (
-        <Tag color={type === 'income' ? 'green' : 'red'}>{type === 'income' ? 'Income' : 'Expense'}</Tag>
+        <span className={`m-pill ${type === 'income' ? '' : 'is-rose'}`}>{type === 'income' ? 'Income' : 'Expense'}</span>
       ),
     },
     { title: 'Category', dataIndex: 'category', key: 'category' },
@@ -134,16 +135,16 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
       title: 'Amount',
       dataIndex: 'amount',
       key: 'amount',
-      render: (amount: number) => `${currencySymbol}${Number(amount).toFixed(2)}`,
+      render: (amount: number) => `${currencySymbol}${money(amount)}`,
     },
     { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
   ];
 
-  const monthStatusMeta: Record<MonthlyDueEntry['status'], { color: string; label: string }> = {
-    paid: { color: 'green', label: 'Paid' },
-    partial: { color: 'orange', label: 'Partial' },
-    missed: { color: 'red', label: 'Missed' },
-    nil: { color: 'default', label: 'Nil' },
+  const monthStatusMeta: Record<MonthlyDueEntry['status'], { tone: string; label: string }> = {
+    paid: { tone: '', label: 'Paid' },
+    partial: { tone: 'is-gold', label: 'Partial' },
+    missed: { tone: 'is-rose', label: 'Missed' },
+    nil: { tone: 'is-muted', label: 'Nil' },
   };
 
   const monthlyColumns: ColumnsType<MonthlyDueEntry> = [
@@ -154,12 +155,12 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
       key: 'status',
       render: (status: MonthlyDueEntry['status'], row: MonthlyDueEntry) => (
         <>
-          <Tag color={monthStatusMeta[status].color}>{monthStatusMeta[status].label}</Tag>
+          <span className={`m-pill ${monthStatusMeta[status].tone}`}>{monthStatusMeta[status].label}</span>
           {status === 'partial' && (
             <span className="profile-view-partial-note">
               {currencySymbol}
-              {Number(row.paidAmount ?? 0).toFixed(2)} of {currencySymbol}
-              {Number(row.dueAmount ?? 0).toFixed(2)}
+              {money(row.paidAmount ?? 0)} of {currencySymbol}
+              {money(row.dueAmount ?? 0)}
             </span>
           )}
         </>
@@ -173,7 +174,7 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
       title: 'Amount',
       dataIndex: 'amount',
       key: 'amount',
-      render: (amount: number) => `${currencySymbol}${Number(amount).toFixed(2)}`,
+      render: (amount: number) => `${currencySymbol}${money(amount)}`,
     },
   ];
 
@@ -188,12 +189,17 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
       )
     : [];
 
-  const containerClass = variant === 'embedded' ? 'profile-view-embedded' : 'profile-view-container';
+  const containerClass = variant === 'embedded' ? 'm-page profile-view-embedded' : 'm-page profile-view-container';
 
   return (
     <div className={containerClass}>
-      {variant === 'page' && isAdmin && (
-        <div className="profile-view-header-row">
+      {variant === 'page' && (
+        <div className="m-page-head">
+          <div className="m-page-head-text">
+            <h1 className="m-page-title">Profile</h1>
+            <span className="m-page-sub">{isAdmin ? "A member's dues, payments and details" : 'Your dues, payments and details'}</span>
+          </div>
+          {isAdmin && (
           <Select
             className="profile-view-selector"
             placeholder="Select a member"
@@ -204,6 +210,7 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
             onChange={(value) => setSelectedMemberId(value)}
             options={members.map((m) => ({ value: m.id, label: `${m.name} (${m.unique_id})` }))}
           />
+          )}
         </div>
       )}
 
@@ -214,73 +221,86 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
           <Spin size="large" />
         </div>
       ) : isAdmin && !selectedMemberId ? (
-        <Card>
-          <Empty description="Select a member above to view their profile" />
+        <Card className="m-card">
+          <Empty description="Pick a member above to see their profile" />
         </Card>
       ) : profile ? (
         <>
           {variant === 'page' && (
-            <Card className="profile-view-card">
-              <div className="profile-view-card-header">
-                <MemberAvatar
-                  key={profile.member.unique_id}
-                  uniqueId={profile.member.unique_id}
-                  size={64}
-                  className={`profile-view-avatar ${profile.member.hasPushSubscription ? 'profile-view-avatar-online' : ''}`}
-                />
-                <div className="profile-view-card-info">
-                  <div className="profile-view-header-name">{profile.member.name}</div>
-                  <div className="profile-view-detail-line">
-                    <span className="profile-view-detail-label">Member ID:</span> {profile.member.unique_id}
-                  </div>
-                  <div className="profile-view-detail-line">
-                    <span className="profile-view-detail-label">Phone:</span> {profile.member.phone}
-                  </div>
-                  <div className="profile-view-detail-line">
-                    <span className="profile-view-detail-label">Address:</span> {profile.member.address}
-                  </div>
+            <div className="m-card profile-view-hero">
+              <MemberAvatar
+                key={profile.member.unique_id}
+                uniqueId={profile.member.unique_id}
+                size={76}
+                className={`profile-view-avatar ${profile.member.hasPushSubscription ? 'profile-view-avatar-online' : ''}`}
+              />
+              <div className="profile-view-card-info">
+                <div className="profile-view-header-name">{profile.member.name}</div>
+                <div className="profile-view-chips">
+                  <span>
+                    <IdcardOutlined /> {profile.member.unique_id}
+                  </span>
+                  {profile.member.phone && (
+                    <a href={`tel:${profile.member.phone.replace(/\s+/g, '')}`}>
+                      <PhoneOutlined /> {profile.member.phone}
+                    </a>
+                  )}
+                  {profile.member.address && (
+                    <span>
+                      <EnvironmentOutlined /> {profile.member.address}
+                    </span>
+                  )}
                 </div>
               </div>
-            </Card>
+            </div>
           )}
 
-          <Card className="profile-view-card" title="Payment Standing">
-            {!profile.lifetimeDues.hasPlan ? (
-              <Alert message="No payment plan set for this account yet." type="info" showIcon />
-            ) : (
-              <Row gutter={16}>
-                <Col xs={24} sm={8}>
-                  <Statistic
-                    title="Total Expected"
-                    value={profile.lifetimeDues.expected ?? 0}
-                    precision={2}
-                    prefix={currencySymbol}
-                  />
-                </Col>
-                <Col xs={24} sm={8}>
-                  <Statistic
-                    title="Total Paid"
-                    value={profile.lifetimeDues.paid}
-                    precision={2}
-                    prefix={currencySymbol}
-                  />
-                </Col>
-                <Col xs={24} sm={8}>
-                  <Statistic
-                    title={(profile.lifetimeDues.due ?? 0) < 0 ? 'Extra Paid' : 'Pending Dues'}
-                    value={Math.abs(profile.lifetimeDues.due ?? 0)}
-                    precision={2}
-                    prefix={currencySymbol}
-                    styles={{ content: { color: (profile.lifetimeDues.due ?? 0) > 0 ? '#cf1322' : '#3f8600' } }}
-                  />
-                </Col>
-              </Row>
-            )}
-          </Card>
+          {!profile.lifetimeDues.hasPlan ? (
+            <Alert message="No payment plan set for this account yet." type="info" showIcon />
+          ) : (
+            <div className="stat-tile-row profile-view-standing">
+              <div className="stat-tile masjid-tile">
+                <div className="stat-tile-icon">
+                  <FileDoneOutlined />
+                </div>
+                <div className="stat-tile-body">
+                  <span className="stat-tile-label">Total expected</span>
+                  <span className="stat-tile-value">
+                    {currencySymbol}
+                    {money(profile.lifetimeDues.expected ?? 0)}
+                  </span>
+                </div>
+              </div>
+              <div className="stat-tile income-tile">
+                <div className="stat-tile-icon">
+                  <ArrowUpOutlined />
+                </div>
+                <div className="stat-tile-body">
+                  <span className="stat-tile-label">Total paid</span>
+                  <span className="stat-tile-value">
+                    {currencySymbol}
+                    {money(profile.lifetimeDues.paid)}
+                  </span>
+                </div>
+              </div>
+              <div className={`stat-tile ${(profile.lifetimeDues.due ?? 0) > 0 ? 'expense-tile' : 'income-tile'}`}>
+                <div className="stat-tile-icon">
+                  <ArrowDownOutlined />
+                </div>
+                <div className="stat-tile-body">
+                  <span className="stat-tile-label">{(profile.lifetimeDues.due ?? 0) < 0 ? 'Extra paid' : 'Pending dues'}</span>
+                  <span className="stat-tile-value" style={{ color: (profile.lifetimeDues.due ?? 0) > 0 ? 'var(--m-rose)' : undefined }}>
+                    {currencySymbol}
+                    {money(Math.abs(profile.lifetimeDues.due ?? 0))}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {profile.dues.hasPlan && profile.monthlyBreakdown ? (
             <Card
-              className="profile-view-card"
+              className="m-card profile-view-card"
               title={
                 <div className="profile-view-year-selector">
                   <Button
@@ -290,7 +310,7 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
                     disabled={selectedYear === null || selectedYear <= profile.joinYear}
                     onClick={() => setSelectedYear((y) => (y !== null ? y - 1 : y))}
                   />
-                  <span>{selectedYear} Monthly Payment Report</span>
+                  <span>{selectedYear} monthly payments</span>
                   <Button
                     type="text"
                     size="small"
@@ -308,15 +328,15 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
                     <div className="profile-view-year-summary">
                       <span>
                         Expected: {currencySymbol}
-                        {Number(yearStats.expected ?? 0).toFixed(2)}
+                        {money(yearStats.expected ?? 0)}
                       </span>
                       <span>
                         Paid: {currencySymbol}
-                        {Number(yearStats.paid ?? 0).toFixed(2)}
+                        {money(yearStats.paid ?? 0)}
                       </span>
-                      <span style={{ color: (yearStats.due ?? 0) > 0 ? '#cf1322' : '#3f8600' }}>
+                      <span style={{ color: (yearStats.due ?? 0) > 0 ? 'var(--m-rose)' : 'var(--m-primary)' }}>
                         {(yearStats.due ?? 0) < 0 ? 'Extra Paid' : 'Balance'}: {currencySymbol}
-                        {Number(Math.abs(yearStats.due ?? 0)).toFixed(2)}
+                        {money(Math.abs(yearStats.due ?? 0))}
                       </span>
                     </div>
                   ) : null;
@@ -341,7 +361,7 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
             </Card>
           ) : profile.dues.hasPlan && profile.member.payment_frequency === 'yearly' ? (
             <Card
-              className="profile-view-card"
+              className="m-card profile-view-card"
               title={
                 <div className="profile-view-year-selector">
                   <Button
@@ -371,19 +391,19 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
                     <div className="profile-view-year-summary">
                       <span>
                         Expected: {currencySymbol}
-                        {Number(yearStats.expected ?? 0).toFixed(2)}
+                        {money(yearStats.expected ?? 0)}
                       </span>
                       <span>
                         Paid: {currencySymbol}
-                        {Number(yearStats.paid ?? 0).toFixed(2)}
+                        {money(yearStats.paid ?? 0)}
                       </span>
-                      <span style={{ color: (yearStats.due ?? 0) > 0 ? '#cf1322' : '#3f8600' }}>
+                      <span style={{ color: (yearStats.due ?? 0) > 0 ? 'var(--m-rose)' : 'var(--m-primary)' }}>
                         {(yearStats.due ?? 0) < 0 ? 'Extra Paid' : 'Pending'}: {currencySymbol}
-                        {Number(Math.abs(yearStats.due ?? 0)).toFixed(2)}
+                        {money(Math.abs(yearStats.due ?? 0))}
                         {isPartial && (
-                          <Tag color="orange" style={{ marginLeft: 8 }}>
+                          <span className="m-pill is-gold" style={{ marginLeft: 8 }}>
                             Partial
-                          </Tag>
+                          </span>
                         )}
                       </span>
                     </div>
@@ -400,7 +420,7 @@ export default function ProfileView({ variant = 'page' }: ProfileViewProps) {
               </Spin>
             </Card>
           ) : (
-            <Card className="profile-view-card" title="Transactions">
+            <Card className="m-card profile-view-card" title="Transactions">
               <Table
                 columns={transactionColumns}
                 dataSource={profile.transactions}

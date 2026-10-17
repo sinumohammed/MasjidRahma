@@ -114,41 +114,53 @@ export default function YearlyScheduleView() {
   ];
 
   return (
-    <div className="yearly-schedule-container">
-      <div className="yearly-schedule-header">
-        <h1 className="yearly-schedule-title">📅 Yearly Schedule</h1>
-        <div className="yearly-schedule-year-nav">
-          <Button icon={<LeftOutlined />} onClick={() => setYear((y) => y - 1)} />
+    <div className="m-page yearly-schedule-page">
+      <div className="m-page-head">
+        <div className="m-page-head-text">
+          <h1 className="m-page-title">Yearly Schedule</h1>
+          <span className="m-page-sub">Each household's food-duty days, month by month</span>
+        </div>
+        <div className="yearly-schedule-year-nav m-card">
+          <Button type="text" icon={<LeftOutlined />} onClick={() => setYear((y) => y - 1)} aria-label="Previous year" />
           <span className="yearly-schedule-year">{year}</span>
-          <Button icon={<RightOutlined />} onClick={() => setYear((y) => y + 1)} />
+          <Button type="text" icon={<RightOutlined />} onClick={() => setYear((y) => y + 1)} aria-label="Next year" />
         </div>
       </div>
 
-      {error && (
-        <Alert
-          message="Error Loading Schedule"
-          description={error}
-          type="error"
-          showIcon
-          style={{ marginBottom: '16px' }}
-        />
-      )}
+      <div className="yearly-schedule-legend">
+        {isCurrentYear && (
+          <span>
+            <span className="yearly-schedule-today-badge">{currentDay}</span> today
+          </span>
+        )}
+        <span>
+          <span className="yearly-schedule-swapped-in">12</span> swapped in
+        </span>
+        <span>
+          <span className="yearly-schedule-swapped-away">12</span> swapped away
+        </span>
+      </div>
+
+      {error && <Alert message="Could not load the schedule" description={error} type="error" showIcon />}
 
       {loading ? (
-        <div className="yearly-schedule-loading">
+        <div className="yearly-schedule-loading m-card">
           <Spin size="large" />
         </div>
       ) : (
+        <div className="m-card m-table-card">
         <Table
           ref={tableRef}
           columns={columns}
           dataSource={members}
           rowKey="id"
           pagination={false}
+          size="small"
           className="yearly-schedule-table"
           scroll={{ x: 'max-content' }}
           rowClassName={(record) => (isTodayRow(record) ? 'yearly-schedule-today-row' : '')}
         />
+        </div>
       )}
     </div>
   );

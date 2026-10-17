@@ -1,23 +1,5 @@
-.profile-view-container {
-  padding: 24px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  min-height: 100vh;
-  border-radius: 8px;
-}
-
 .profile-view-embedded {
-  margin-top: 24px;
-}
-
-.profile-view-year-payments-heading {
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-  margin: 16px 0 8px;
-}
-
-:root[data-theme='dark'] .profile-view-year-payments-heading {
-  color: #d1d5db;
+  margin-top: 0;
 }
 
 .profile-view-loading {
@@ -26,141 +8,157 @@
   padding: 60px 0;
 }
 
-.profile-view-card {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  margin-bottom: 16px;
+.profile-view-selector {
+  min-width: 280px;
 }
 
-.profile-view-header-row {
+/* --- the member: photo, name, ID, phone, address --- */
+.profile-view-hero {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+  gap: 18px;
+  padding: 20px 22px;
 }
 
-.profile-view-selector {
-  min-width: 260px;
-  margin-left: auto;
+.profile-view-hero::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--m-primary), var(--m-gold-bright));
+}
+
+.profile-view-avatar.member-avatar-icon,
+.profile-view-avatar.member-avatar-photo {
+  box-shadow: 0 0 0 3px var(--m-surface), 0 0 0 5px var(--m-border-strong);
+}
+
+/* A green ring: this member gets notifications on a phone. */
+.profile-view-avatar-online.member-avatar-icon,
+.profile-view-avatar-online.member-avatar-photo {
+  box-shadow: 0 0 0 3px var(--m-surface), 0 0 0 5px var(--m-primary);
+}
+
+.profile-view-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.profile-view-header-name {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.profile-view-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.profile-view-chips > span,
+.profile-view-chips > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--m-text-2);
+  background: var(--m-surface-2);
+  border: 1px solid var(--m-border);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-view-chips > a:hover {
+  color: var(--m-primary);
+  border-color: var(--m-primary);
+}
+
+.profile-view-standing {
+  margin: 0;
+}
+
+/* --- the year report --- */
+.profile-view-card.ant-card .ant-card-head-title {
+  overflow: visible;
 }
 
 .profile-view-year-selector {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
-}
-
-.profile-view-partial-note {
-  margin-left: 8px;
-  font-size: 12px;
-  color: #6b7280;
-}
-
-:root[data-theme='dark'] .profile-view-partial-note {
-  color: #9ca3af;
+  font-weight: 700;
 }
 
 .profile-view-year-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  font-size: 13px;
-  color: #6b7280;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
-:root[data-theme='dark'] .profile-view-year-summary {
-  color: #9ca3af;
-}
-
-.profile-view-card-header {
-  display: flex;
+.profile-view-year-summary > span {
+  display: inline-flex;
   align-items: center;
-  gap: 16px;
-  min-width: 0;
-}
-
-.profile-view-avatar.member-avatar-icon,
-.profile-view-avatar.member-avatar-photo {
-  border: 2px solid rgba(0, 0, 0, 0.08);
-}
-
-.profile-view-avatar-online.member-avatar-icon,
-.profile-view-avatar-online.member-avatar-photo {
-  border-color: #52c41a;
-  box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.15);
-}
-
-.profile-view-card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.profile-view-header-name {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1f2937;
-  margin-bottom: 2px;
-}
-
-.profile-view-detail-line {
+  padding: 4px 12px;
+  border-radius: 999px;
   font-size: 13px;
-  color: #6b7280;
-  overflow-wrap: break-word;
-}
-
-.profile-view-detail-label {
   font-weight: 600;
-  color: #374151;
+  background: var(--m-surface-2);
+  border: 1px solid var(--m-border);
+  font-variant-numeric: tabular-nums;
 }
 
-:root[data-theme='dark'] .profile-view-detail-label {
-  color: #d1d5db;
+.profile-view-partial-note {
+  margin-left: 8px;
+  font-size: 12.5px;
+  color: var(--m-muted);
+  font-variant-numeric: tabular-nums;
 }
 
-:root[data-theme='dark'] .profile-view-header-name {
-  color: #e5e7eb;
+.profile-view-year-payments-heading {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--m-text-2);
+  margin: 18px 0 8px;
 }
 
-:root[data-theme='dark'] .profile-view-detail-line {
-  color: #9ca3af;
-}
-
-:root[data-theme='dark'] .profile-view-avatar.member-avatar-icon,
-:root[data-theme='dark'] .profile-view-avatar.member-avatar-photo {
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-/* Must come after the dark-theme rule above - same specificity, later in
-   source order, so the green ring wins over the generic dark border color. */
-:root[data-theme='dark'] .profile-view-avatar-online.member-avatar-icon,
-:root[data-theme='dark'] .profile-view-avatar-online.member-avatar-photo {
-  border-color: #52c41a;
-}
-
-/* Dark Theme Overrides */
-:root[data-theme='dark'] .profile-view-container {
-  background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
-}
-
-:root[data-theme='dark'] .profile-view-card {
-  background: #1f1f1f;
-}
-
-/* Responsive */
 @media (max-width: 768px) {
-  .profile-view-container {
-    padding: 16px;
-  }
-
   .profile-view-selector {
     min-width: 100%;
+  }
+
+  .profile-view-hero {
+    padding: 18px 16px;
+    gap: 14px;
+  }
+
+  .stat-tile-row.profile-view-standing {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .stat-tile-row.profile-view-standing {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-view-standing .stat-tile.stat-tile {
+    flex-direction: row;
+    align-items: center;
   }
 }

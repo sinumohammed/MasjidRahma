@@ -103,6 +103,105 @@ p {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- Shared page pieces: every page is a heading, then cards. --- */
+.m-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.m-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.m-page-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* On a computer the header already names the page; phones show it here. */
+.m-page-title {
+  display: none;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 991px) {
+  .m-page-title {
+    display: block;
+  }
+}
+
+.m-page-sub {
+  font-size: 14px;
+  color: var(--m-muted);
+}
+
+.m-card {
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  box-shadow: var(--m-shadow);
+}
+
+.m-card.ant-card {
+  background: var(--m-surface);
+}
+
+.m-card.ant-card .ant-card-head {
+  border-bottom-color: var(--m-border);
+  font-weight: 700;
+}
+
+.m-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* A table inside a card: the card draws the edge. */
+.m-table-card {
+  overflow: hidden;
+}
+
+.m-table-card .ant-table,
+.m-table-card .ant-table-container {
+  background: transparent;
+}
+
+.m-table-card .ant-table-pagination.ant-pagination {
+  margin: 14px 16px;
+}
+
+/* Small coloured labels: status, type. */
+.m-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  color: var(--m-primary);
+  background: var(--m-primary-soft);
+}
+
+.m-pill.is-gold { color: var(--m-gold); background: var(--m-gold-soft); }
+.m-pill.is-rose { color: var(--m-rose); background: var(--m-rose-soft); }
+.m-pill.is-blue { color: var(--m-blue); background: var(--m-blue-soft); }
+.m-pill.is-muted { color: var(--m-muted); background: color-mix(in srgb, var(--m-muted) 12%, transparent); }
+
 /* Phones: every text field at 16px. iPhone Safari zooms into any smaller one
    on focus and stays zoomed - the page then reaches past the screen edges and
    has to be dragged back with a finger. */
