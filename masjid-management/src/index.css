@@ -202,6 +202,16 @@ p {
 .m-pill.is-blue { color: var(--m-blue); background: var(--m-blue-soft); }
 .m-pill.is-muted { color: var(--m-muted); background: color-mix(in srgb, var(--m-muted) 12%, transparent); }
 
+/* Money in and out: +₹1,500 in green, −₹500 in rose. */
+.m-amount {
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-amount.is-in { color: var(--m-primary); }
+.m-amount.is-out { color: var(--m-rose); }
+
 /* Phones: every text field at 16px. iPhone Safari zooms into any smaller one
    on focus and stays zoomed - the page then reaches past the screen edges and
    has to be dragged back with a finger. */

@@ -102,12 +102,13 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
 
   return (
     <div className="transaction-form-container">
-      <h2 className="form-title">{isEditMode ? '✏️ Edit Transaction' : '➕ Add New Transaction'}</h2>
+      <h2 className="transaction-form-title">{isEditMode ? 'Edit transaction' : 'Add a transaction'}</h2>
 
       <Form
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        requiredMark={false}
         className="transaction-form"
         initialValues={
           transaction
@@ -132,7 +133,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
           <Select
             placeholder="Select income or expense"
             options={transactionTypes}
-            className="form-select"
           />
         </Form.Item>
 
@@ -145,7 +145,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
           <Select
             placeholder="Select category"
             options={selectedType ? categories[selectedType as keyof typeof categories] : []}
-            className="form-select"
             disabled={!selectedType}
           />
         </Form.Item>
@@ -155,7 +154,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
           <Select
             placeholder="Select a bank"
             options={banks.map((b) => ({ label: b.name, value: b.id }))}
-            className="form-select"
             allowClear
           />
         </Form.Item>
@@ -169,7 +167,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
           <Select
             placeholder="Select a member"
             options={members.map((m) => ({ label: `${m.unique_id} - ${m.name}`, value: m.id }))}
-            className="form-select"
             allowClear
             showSearch
             optionFilterProp="label"
@@ -197,7 +194,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
             min={0}
             step={0.01}
             precision={2}
-            className="form-number"
             prefix={currencySymbol}
           />
         </Form.Item>
@@ -212,7 +208,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
             rows={3}
             maxLength={500}
             showCount
-            className="form-textarea"
           />
         </Form.Item>
 
@@ -224,7 +219,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
         >
           <DatePicker
             format="YYYY-MM-DD"
-            className="form-date"
             disabledDate={(current) => {
               // Can't select dates in the future
               return current && current > dayjs().endOf('day');
@@ -238,7 +232,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
             <Button 
               onClick={onCancel}
               disabled={loading}
-              className="form-button-cancel"
             >
               Cancel
             </Button>
@@ -246,7 +239,6 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
               type="primary"
               htmlType="submit"
               loading={loading}
-              className="form-button-submit"
             >
               {isEditMode ? 'Save' : 'Add'}
             </Button>

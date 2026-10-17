@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Table, Spin, Alert, Tag, Button, Modal, Form, Input, InputNumber, message } from 'antd';
+import { Table, Spin, Alert, Button, Modal, Form, Input, InputNumber, Grid, message } from 'antd';
 import { BankOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -13,6 +13,8 @@ import {
 } from '../../services/api';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
+import { money } from '../../utils/money';
+import { shortDate } from '../../utils/dates';
 import './BanksPage.css';
 
 interface BanksPageProps {
@@ -100,6 +102,10 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
 
   const selectedBank = banks.find((b) => b.id === selectedBankId);
 
+  // Phones: the date and bank go under the category; the amount stays in view.
+  const compact = !Grid.useBreakpoint().md;
+  const bankName = (bankId: string | null) => banks.find((b) => b.id === bankId)?.name ?? '—';
+
   const columns: ColumnsType<Transaction> = [
     {
       title: 'Date',
@@ -107,8 +113,9 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
       key: 'date',
       sorter: (a, b) => dayjs(a.date).valueOf() - dayjs(b.date).valueOf(),
       defaultSortOrder: 'descend',
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD'),
+      render: (date: string) => <span className="transactions-date">{shortDate(date)}</span>,
       width: 120,
+      responsive: ['md'],
     },
     ...(!selectedBankId
       ? [
@@ -117,7 +124,8 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
             dataIndex: 'bank_id',
             key: 'bank_id',
             width: 120,
-            render: (bankId: string | null) => banks.find((b) => b.id === bankId)?.name ?? '—',
+            responsive: ['md'] as ('md')[],
+            render: (bankId: string | null) => bankName(bankId),
           },
         ]
       : []),
@@ -125,15 +133,31 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
       title: 'Category',
       dataIndex: 'category',
       key: 'category',
+      render: (category: string, record) =>
+        compact ? (
+          <div className="transactions-category">
+            <span>{category}</span>
+            <span className="banks-entry-meta">
+              {shortDate(record.date)}
+              {!selectedBankId && ` · ${bankName(record.bank_id)}`}
+            </span>
+          </div>
+        ) : (
+          category
+        ),
     },
     {
       title: 'Amount',
       dataIndex: 'amount',
       key: 'amount',
       sorter: (a, b) => a.amount - b.amount,
+      align: 'right',
+      width: compact ? 110 : 130,
       render: (amount: number, record) => (
-        <span style={{ color: record.type === 'income' ? '#52c41a' : '#f5222d', fontWeight: 600 }}>
-          {record.type === 'income' ? '+' : '-'}{currencySymbol}{amount.toFixed(2)}
+        <span className={`m-amount ${record.type === 'income' ? 'is-in' : 'is-out'}`}>
+          {record.type === 'income' ? '+' : '−'}
+          {currencySymbol}
+          {money(amount)}
         </span>
       ),
     },
@@ -142,6 +166,7 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
       dataIndex: 'description',
       key: 'description',
       ellipsis: true,
+      responsive: ['md'],
     },
   ];
 
@@ -154,16 +179,19 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
   }
 
   if (error) {
-    return <Alert message="Error Loading Banks" description={error} type="error" showIcon style={{ marginBottom: '16px' }} />;
+    return <Alert message="Could not load the banks" description={error} type="error" showIcon />;
   }
 
   return (
-    <div className="banks-page-container">
-      <div className="banks-header">
-        <h1 className="banks-title">🏦 Banks</h1>
+    <div className="m-page banks-page">
+      <div className="m-page-head">
+        <div className="m-page-head-text">
+          <h1 className="m-page-title">Banks</h1>
+          <span className="m-page-sub">Where the masjid's money is - tap an account to see its entries</span>
+        </div>
         {isAdmin && (
           <Button type="primary" icon={<PlusOutlined />} onClick={openAddBankModal} className="add-bank-btn">
-            <span className="add-bank-btn-label">Add Bank</span>
+            <span className="add-bank-btn-label">Add bank</span>
           </Button>
         )}
       </div>
@@ -177,9 +205,13 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
             <BankOutlined />
           </div>
           <div className="bank-card-body">
-            <span className="bank-card-label">All Banks</span>
+            <span className="bank-card-label">All accounts</span>
             <span className="bank-card-value">
-              {currencySymbol}{banks.reduce((sum, b) => sum + b.balance, 0).toFixed(2)}
+              {currencySymbol}
+              {money(banks.reduce((sum, b) => sum + b.balance, 0))}
+            </span>
+            <span className="bank-card-opening">
+              {banks.length} {banks.length === 1 ? 'account' : 'accounts'}
             </span>
           </div>
         </div>
@@ -196,16 +228,20 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
             <div className="bank-card-body">
               <span className="bank-card-label">{bank.name}</span>
               <span className={`bank-card-value ${bank.balance < 0 ? 'negative' : ''}`}>
-                {currencySymbol}{bank.balance.toFixed(2)}
+                {currencySymbol}
+                {money(bank.balance)}
               </span>
               <span className="bank-card-opening">
-                Opening: {currencySymbol}{bank.opening_balance.toFixed(2)}
+                Opening {currencySymbol}
+                {money(bank.opening_balance)}
               </span>
             </div>
             {isAdmin && (
               <Button
                 icon={<EditOutlined />}
                 size="small"
+                type="text"
+                aria-label={`Edit ${bank.name}`}
                 className="bank-card-edit-btn"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -217,18 +253,10 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
         ))}
       </div>
 
+      <div className="m-card m-table-card">
       <div className="banks-transactions-heading">
-        {selectedBank ? (
-          <>
-            <span>{selectedBank.name} Transactions</span>
-            <Tag color="blue">{bankTransactions.length}</Tag>
-          </>
-        ) : (
-          <>
-            <span>All Bank Transactions</span>
-            <Tag color="blue">{bankTransactions.length}</Tag>
-          </>
-        )}
+        <span>{selectedBank ? `${selectedBank.name}: entries` : 'All entries'}</span>
+        <span className="m-pill is-muted">{bankTransactions.length}</span>
       </div>
 
       <Table
@@ -237,11 +265,12 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
         rowKey="id"
         pagination={{ defaultPageSize: 10, showSizeChanger: true }}
         className="banks-transactions-table"
-        scroll={{ x: 'max-content' }}
+        tableLayout="fixed"
       />
+      </div>
 
       <Modal
-        title={editingBank ? 'Edit Bank' : 'Add Bank'}
+        title={editingBank ? 'Edit bank' : 'Add a bank'}
         open={isBankModalOpen}
         onCancel={() => setIsBankModalOpen(false)}
         footer={null}
@@ -255,7 +284,7 @@ export default function BanksPage({ initialBankId }: BanksPageProps) {
             <Input placeholder="e.g. Bank, Committee" />
           </Form.Item>
           <Form.Item
-            label={`Opening Balance (${currencySymbol})`}
+            label={`Opening balance (${currencySymbol})`}
             name="openingBalance"
             initialValue={0}
             rules={[{ required: true, message: 'Please enter an opening balance' }]}

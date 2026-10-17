@@ -11,7 +11,9 @@ import {
   Popconfirm,
   Alert,
   Tooltip,
-  Tag,
+  Segmented,
+  Grid,
+  Dropdown,
 } from 'antd';
 import {
   PlusOutlined,
@@ -19,6 +21,8 @@ import {
   DeleteOutlined,
   SearchOutlined,
   PrinterOutlined,
+  FilterOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
@@ -34,6 +38,8 @@ import TransactionReceipt from './TransactionReceipt';
 import MemberAvatar from './Members/MemberAvatar';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
+import { money } from '../utils/money';
+import { shortDate } from '../utils/dates';
 import './TransactionsList.css';
 
 const { RangePicker } = DatePicker;
@@ -123,6 +129,25 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
     setSelectedRowKeys([]);
   }, [typeFilter, categoryFilter, memberFilter, dateRange, searchText]);
 
+  // Phones: one compact row - category with date and description, the
+  // amount, and a ⋯ menu for print / edit / delete (no select boxes).
+  const compact = !Grid.useBreakpoint().md;
+  const confirmDelete = (record: Transaction) =>
+    Modal.confirm({
+      title: 'Delete this transaction?',
+      content: 'This action cannot be undone.',
+      okText: 'Delete',
+      okButtonProps: { danger: true },
+      onOk: () => handleDelete(record.id),
+    });
+
+  // Phones: category, member and dates fold away behind "Filters".
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters = [categoryFilter, memberFilter, dateRange].filter(Boolean).length;
+
+  const totalIn = filteredTransactions.filter((t) => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+  const totalOut = filteredTransactions.filter((t) => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+
   const handleAddClick = () => {
     setEditingTransaction(undefined);
     setIsModalOpen(true);
@@ -174,8 +199,9 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
       dataIndex: 'date',
       key: 'date',
       sorter: (a, b) => dayjs(a.date).valueOf() - dayjs(b.date).valueOf(),
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD'),
-      width: 120,
+      render: (date: string) => <span className="transactions-date">{shortDate(date)}</span>,
+      width: 118,
+      responsive: ['md'],
     },
     {
       title: 'Member',
@@ -183,13 +209,14 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
       key: 'member_id',
       width: 96,
       align: 'center',
+      responsive: ['md'],
       render: (memberId: string | null) => {
         const member = membersById.get(memberId ?? '');
         return (
           <Tooltip title={member ? member.name : 'No member linked'}>
             <div className="transaction-member-cell">
               <MemberAvatar key={member?.unique_id ?? 'none'} uniqueId={member?.unique_id} size={28} />
-              {member && <Tag className="transaction-member-id-chip">{member.unique_id}</Tag>}
+              {member && <span className="transaction-member-id-chip">{member.unique_id}</span>}
             </div>
           </Tooltip>
         );
@@ -199,15 +226,27 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
       title: 'Category',
       dataIndex: 'category',
       key: 'category',
+      render: (category: string, record) => (
+        <div className="transactions-category">
+          <span>{category}</span>
+          <span className="transactions-desc-inline transactions-date-inline">{shortDate(record.date)}</span>
+          {/* On a phone the description is here, not in its own column. */}
+          {record.description && <span className="transactions-desc-inline">{record.description}</span>}
+        </div>
+      ),
     },
     {
       title: 'Amount',
       dataIndex: 'amount',
       key: 'amount',
       sorter: (a, b) => a.amount - b.amount,
+      align: 'right',
+      width: compact ? 104 : 120,
       render: (amount: number, record) => (
-        <span style={{ color: record.type === 'income' ? '#52c41a' : '#f5222d', fontWeight: 600 }}>
-          {record.type === 'income' ? '+' : '-'}{currencySymbol}{amount.toFixed(2)}
+        <span className={`m-amount ${record.type === 'income' ? 'is-in' : 'is-out'}`}>
+          {record.type === 'income' ? '+' : '−'}
+          {currencySymbol}
+          {money(amount)}
         </span>
       ),
     },
@@ -215,30 +254,42 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
       title: 'Description',
       dataIndex: 'description',
       key: 'description',
-      ellipsis: true,
+      ellipsis: { showTitle: true },
+      responsive: ['md'],
     },
     ...(isAdmin
       ? [
           {
-            title: 'Actions',
+            title: '',
             key: 'actions',
-            width: 120,
-            fixed: 'right' as const,
-            render: (_: unknown, record: Transaction) => (
-              <Space>
+            width: compact ? 44 : 112,
+            align: 'right' as const,
+            render: (_: unknown, record: Transaction) =>
+              compact ? (
+                <Dropdown
+                  trigger={['click']}
+                  menu={{
+                    items: [
+                      ...(record.type === 'income' ? [{ key: 'print', icon: <PrinterOutlined />, label: 'Print receipt' }] : []),
+                      { key: 'edit', icon: <EditOutlined />, label: 'Edit' },
+                      { key: 'delete', icon: <DeleteOutlined />, label: 'Delete', danger: true },
+                    ],
+                    onClick: ({ key }) =>
+                      key === 'print' ? handlePrintReceiptClick(record) : key === 'edit' ? handleEditClick(record) : confirmDelete(record),
+                  }}
+                >
+                  <Button type="text" icon={<MoreOutlined />} aria-label="Actions" />
+                </Dropdown>
+              ) : (
+              <Space size={0}>
                 {record.type === 'income' && (
-                  <Button
-                    icon={<PrinterOutlined />}
-                    size="small"
-                    title="Print Receipt"
-                    onClick={() => handlePrintReceiptClick(record)}
-                  />
+                  <Tooltip title="Print receipt">
+                    <Button icon={<PrinterOutlined />} type="text" size="small" onClick={() => handlePrintReceiptClick(record)} aria-label="Print receipt" />
+                  </Tooltip>
                 )}
-                <Button
-                  icon={<EditOutlined />}
-                  size="small"
-                  onClick={() => handleEditClick(record)}
-                />
+                <Tooltip title="Edit">
+                  <Button icon={<EditOutlined />} type="text" size="small" onClick={() => handleEditClick(record)} aria-label="Edit" />
+                </Tooltip>
                 <Popconfirm
                   title="Delete this transaction?"
                   description="This action cannot be undone."
@@ -246,19 +297,34 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
                   okText="Delete"
                   okButtonProps={{ danger: true }}
                 >
-                  <Button icon={<DeleteOutlined />} size="small" danger />
+                  <Button icon={<DeleteOutlined />} type="text" size="small" danger aria-label="Delete" />
                 </Popconfirm>
               </Space>
-            ),
+              ),
           },
         ]
       : []),
   ];
 
   return (
-    <div className="transactions-list-container">
-      <div className="transactions-header">
-        <h1 className="transactions-title">📋 Transactions</h1>
+    <div className="m-page transactions-page">
+      <div className="m-page-head">
+        <div className="m-page-head-text">
+          <h1 className="m-page-title">Transactions</h1>
+          <span className="m-page-sub">
+            {filteredTransactions.length} {filteredTransactions.length === 1 ? 'entry' : 'entries'} ·{' '}
+            <span className="m-amount is-in">
+              {currencySymbol}
+              {money(totalIn)}
+            </span>{' '}
+            in ·{' '}
+            <span className="m-amount is-out">
+              {currencySymbol}
+              {money(totalOut)}
+            </span>{' '}
+            out
+          </span>
+        </div>
         {isAdmin && (
           <Space>
             {selectedRowKeys.length > 0 && (
@@ -270,34 +336,20 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
                 okButtonProps={{ danger: true, loading: bulkDeleting }}
               >
                 <Button danger icon={<DeleteOutlined />} loading={bulkDeleting}>
-                  Delete Selected ({selectedRowKeys.length})
+                  Delete ({selectedRowKeys.length})
                 </Button>
               </Popconfirm>
             )}
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              size="large"
-              onClick={handleAddClick}
-              className="add-transaction-btn"
-            >
-              <span className="add-transaction-btn-label">Add Transaction</span>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAddClick} className="add-transaction-btn">
+              <span className="add-transaction-btn-label">Add transaction</span>
             </Button>
           </Space>
         )}
       </div>
 
-      {error && (
-        <Alert
-          message="Error Loading Transactions"
-          description={error}
-          type="error"
-          showIcon
-          style={{ marginBottom: '16px' }}
-        />
-      )}
+      {error && <Alert message="Could not load the transactions" description={error} type="error" showIcon />}
 
-      <div className="transactions-filters">
+      <div className="m-card m-toolbar transactions-filters">
         <Input
           placeholder="Search category or description"
           prefix={<SearchOutlined />}
@@ -306,17 +358,20 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
           allowClear
           className="filter-search"
         />
-        <Select
-          placeholder="Type"
-          value={typeFilter}
-          onChange={setTypeFilter}
-          allowClear
-          className="filter-select"
+        <Segmented
+          value={typeFilter ?? 'all'}
+          onChange={(v) => setTypeFilter(v === 'all' ? undefined : (v as 'income' | 'expense'))}
           options={[
-            { label: '💰 Income', value: 'income' },
-            { label: '💸 Expense', value: 'expense' },
+            { label: 'All', value: 'all' },
+            { label: 'Income', value: 'income' },
+            { label: 'Expense', value: 'expense' },
           ]}
+          className="filter-type"
         />
+        <Button className="transactions-filters-toggle" icon={<FilterOutlined />} onClick={() => setFiltersOpen((o) => !o)}>
+          Filters{activeFilters ? ` (${activeFilters})` : ''}
+        </Button>
+        <div className={`transactions-more-filters${filtersOpen ? ' is-open' : ''}`}>
         <Select
           placeholder="Category"
           value={categoryFilter}
@@ -340,8 +395,10 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
           onChange={(range) => setDateRange(range as [Dayjs, Dayjs] | null)}
           className="filter-date-range"
         />
+        </div>
       </div>
 
+      <div className="m-card m-table-card">
       <Table
         columns={columns}
         dataSource={filteredTransactions}
@@ -349,9 +406,9 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
         loading={loading}
         pagination={{ defaultPageSize: 10, showSizeChanger: true }}
         className="transactions-table"
-        scroll={{ x: 'max-content' }}
+        tableLayout="fixed"
         rowSelection={
-          isAdmin
+          isAdmin && !compact
             ? {
                 selectedRowKeys,
                 onChange: (keys) => setSelectedRowKeys(keys as string[]),
@@ -359,6 +416,7 @@ export default function TransactionsList({ initialTypeFilter, initialCategoryFil
             : undefined
         }
       />
+      </div>
 
       <Modal
         title={null}

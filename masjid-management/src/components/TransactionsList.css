@@ -1,61 +1,33 @@
-.transactions-list-container {
-  padding: 24px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  min-height: 100vh;
-  border-radius: 8px;
+.transactions-page .m-page-head {
+  flex-wrap: nowrap;
+  align-items: flex-start;
 }
 
-.transactions-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
+.transactions-more-filters {
+  display: contents;
 }
 
-.transactions-title {
-  font-size: 32px;
-  font-weight: bold;
-  color: #1f2937;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  margin: 0;
+.transactions-filters-toggle.ant-btn {
+  display: none;
 }
 
-.add-transaction-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  height: 40px;
-  padding: 0 24px;
-  font-weight: 600;
-}
-
-.transactions-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 20px;
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.filter-search {
+.transactions-page .filter-search {
   flex: 1 1 240px;
 }
 
-.filter-select {
+.transactions-page .filter-select {
   flex: 1 1 160px;
+  min-width: 150px;
 }
 
-.filter-date-range {
-  flex: 1 1 260px;
+.transactions-page .filter-date-range {
+  flex: 1 1 250px;
 }
 
-.transactions-table {
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+.transactions-date {
+  white-space: nowrap;
+  color: var(--m-text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .transaction-member-cell {
@@ -66,63 +38,79 @@
 }
 
 .transaction-member-id-chip {
-  margin: 0;
-  padding: 0 6px;
-  font-size: 10px;
-  line-height: 16px;
-  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--m-muted);
+  font-variant-numeric: tabular-nums;
 }
 
-.transactions-table :global(.ant-table) {
-  border-radius: 12px;
+.transactions-category {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--m-text);
 }
 
-/* Dark Theme Overrides */
-:root[data-theme='dark'] .transactions-list-container {
-  background: linear-gradient(135deg, #1a1a1a 0%, #101820 100%);
+/* The description shows in its own column on a wide screen. */
+.transactions-desc-inline {
+  display: none;
+  font-weight: 400;
+  font-size: 12.5px;
+  color: var(--m-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
 }
 
-:root[data-theme='dark'] .transactions-title {
-  color: #e5e7eb;
-  text-shadow: none;
-}
-
-:root[data-theme='dark'] .transactions-filters,
-:root[data-theme='dark'] .transactions-table {
-  background: #1f1f1f;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .transactions-list-container {
-    padding: 16px;
+@media (max-width: 767px) {
+  .transactions-filters-toggle.ant-btn {
+    display: inline-flex;
   }
 
-  .transactions-title {
-    font-size: 20px;
-  }
-
-  .transactions-filters {
+  .transactions-more-filters {
+    display: none;
     flex-direction: column;
-  }
-
-  .filter-search,
-  .filter-select,
-  .filter-date-range {
-    flex: 1 1 auto;
+    gap: 10px;
     width: 100%;
   }
-}
 
-@media (max-width: 768px) {
-  .add-transaction-btn {
-    width: 40px;
-    height: 40px;
+  .transactions-more-filters.is-open {
+    display: flex;
+  }
+
+  .transactions-desc-inline {
+    display: block;
+    max-width: 100%;
+  }
+
+  .transactions-page .ant-table-cell {
+    padding: 12px 8px !important;
+  }
+
+  .transactions-page .filter-type {
+    flex: 1 1 auto;
+  }
+
+  .transactions-page .filter-type .ant-segmented-group {
+    display: flex;
+  }
+
+  .transactions-page .filter-type .ant-segmented-item {
+    flex: 1;
+  }
+
+  .transactions-page .filter-select,
+  .transactions-page .filter-date-range {
+    flex: 1 1 100%;
+  }
+
+  .add-transaction-btn.ant-btn {
+    width: 44px;
+    height: 44px;
     padding: 0;
     border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .add-transaction-btn-label {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Table, Tag, Select, Alert, Tooltip, Checkbox, Button, Modal, message } from 'antd';
-import { DeleteOutlined } from '@ant-design/icons';
+import { Table, Segmented, Alert, Tooltip, Checkbox, Button, Modal, Grid, message } from 'antd';
+import { DeleteOutlined, ClearOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
   getActivityLog,
@@ -10,12 +10,13 @@ import {
   type ActivityEventType,
 } from '../../services/api';
 import MemberAvatar from '../Members/MemberAvatar';
+import { announcementDate } from '../../utils/dates';
 import './ActivityLog.css';
 
-const EVENT_META: Record<ActivityEventType, { label: string; color: string }> = {
-  login: { label: 'Login', color: 'green' },
-  logout: { label: 'Logout', color: 'default' },
-  page_visit: { label: 'Page Visit', color: 'blue' },
+const EVENT_META: Record<ActivityEventType, { label: string; tone: string }> = {
+  login: { label: 'Log in', tone: '' },
+  logout: { label: 'Log out', tone: 'is-muted' },
+  page_visit: { label: 'Page visit', tone: 'is-blue' },
 };
 
 // Matches App.tsx's ADMIN_AVATAR_ID - the admin account has no member row of
@@ -101,20 +102,25 @@ export default function ActivityLog() {
     });
   };
 
+  // Phones: one column - the user, with the event, time and page under it.
+  const compact = !Grid.useBreakpoint().md;
+
   const columns: ColumnsType<ActivityEvent> = [
     {
       title: 'Time',
       dataIndex: 'created_at',
       key: 'created_at',
       width: 170,
-      render: (value: string) => new Date(value).toLocaleString(),
+      responsive: ['md'],
+      render: (value: string) => <span className="activity-log-time">{announcementDate(value)}</span>,
     },
     {
       title: 'Event',
       dataIndex: 'event_type',
       key: 'event_type',
       width: 120,
-      render: (value: ActivityEventType) => <Tag color={EVENT_META[value].color}>{EVENT_META[value].label}</Tag>,
+      responsive: ['md'],
+      render: (value: ActivityEventType) => <span className={`m-pill ${EVENT_META[value].tone}`}>{EVENT_META[value].label}</span>,
     },
     {
       title: 'User',
@@ -131,13 +137,20 @@ export default function ActivityLog() {
             <span>
               {record.username}
               {record.is_admin && (
-                <Tag color="gold" style={{ marginLeft: 6 }}>
+                <span className="m-pill is-gold" style={{ marginLeft: 6 }}>
                   Admin
-                </Tag>
+                </span>
               )}
             </span>
           ) : (
             <span className="activity-log-guest">Guest</span>
+          )}
+          {compact && (
+            <div className="activity-log-meta">
+              <span className={`m-pill ${EVENT_META[record.event_type].tone}`}>{EVENT_META[record.event_type].label}</span>
+              <span>{announcementDate(record.created_at)}</span>
+              {record.path && <span>{record.path}</span>}
+            </div>
           )}
         </div>
       ),
@@ -146,19 +159,21 @@ export default function ActivityLog() {
       title: 'Page',
       dataIndex: 'path',
       key: 'path',
+      responsive: ['md'],
       render: (value: string | null) => value || '—',
     },
     {
       title: 'Device',
       key: 'device',
+      responsive: ['lg'],
       render: (_: unknown, record: ActivityEvent) => (
         <span>
           {[record.browser, record.os].filter(Boolean).join(' / ') || 'Unknown'}
           {record.is_pwa && (
             <Tooltip title="Opened from an installed app (PWA)">
-              <Tag color="purple" style={{ marginLeft: 6 }}>
-                PWA
-              </Tag>
+              <span className="m-pill is-muted" style={{ marginLeft: 6 }}>
+                App
+              </span>
             </Tooltip>
           )}
         </span>
@@ -167,16 +182,22 @@ export default function ActivityLog() {
     {
       title: 'Location',
       key: 'location',
+      responsive: ['md'],
       render: (_: unknown, record: ActivityEvent) =>
         [record.city, record.region, record.country].filter(Boolean).join(', ') || 'Unknown',
     },
   ];
 
   return (
-    <div className="activity-log-container">
-      <div className="activity-log-header">
-        <h1 className="activity-log-title">🕒 Activity</h1>
-        <div className="activity-log-controls">
+    <div className="m-page activity-log-page">
+      <div className="m-page-head">
+        <div className="m-page-head-text">
+          <h1 className="m-page-title">Activity</h1>
+          <span className="m-page-sub">Who used the app, when and from where - {total} {total === 1 ? 'event' : 'events'}</span>
+        </div>
+      </div>
+
+      <div className="m-card m-toolbar activity-log-controls">
           <Checkbox
             checked={adminOnly}
             onChange={(e) => {
@@ -186,51 +207,50 @@ export default function ActivityLog() {
           >
             Admin only
           </Checkbox>
-          <Select
-            placeholder="All events"
-            value={eventType}
-            onChange={(value) => {
-              setEventType(value);
+          <Segmented
+            value={eventType ?? 'all'}
+            onChange={(v) => {
+              setEventType(v === 'all' ? undefined : (v as ActivityEventType));
               setPage(1);
             }}
-            allowClear
-            className="activity-log-filter"
             options={[
-              { label: 'Login', value: 'login' },
-              { label: 'Logout', value: 'logout' },
-              { label: 'Page Visit', value: 'page_visit' },
+              { label: 'All', value: 'all' },
+              { label: 'Log in', value: 'login' },
+              { label: 'Log out', value: 'logout' },
+              { label: 'Page visits', value: 'page_visit' },
             ]}
+            className="activity-log-filter"
           />
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            disabled={selectedIds.length === 0}
-            loading={deleting}
-            onClick={handleDeleteSelected}
-          >
-            Delete Selected{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+          <span className="activity-log-spacer" />
+          {selectedIds.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} loading={deleting} onClick={handleDeleteSelected}>
+              Delete ({selectedIds.length})
+            </Button>
+          )}
+          <Button danger type="text" icon={<ClearOutlined />} loading={deleting} onClick={handleClearAll}>
+            Clear all
           </Button>
-          <Button danger icon={<DeleteOutlined />} loading={deleting} onClick={handleClearAll}>
-            Clear All
-          </Button>
-        </div>
       </div>
 
       {error && (
-        <Alert message="Error Loading Activity" description={error} type="error" showIcon style={{ marginBottom: 16 }} />
+        <Alert message="Could not load the activity" description={error} type="error" showIcon />
       )}
 
+      <div className="m-card m-table-card">
       <Table
         columns={columns}
         dataSource={events}
         rowKey="id"
-        rowSelection={{
-          selectedRowKeys: selectedIds,
-          onChange: (keys) => setSelectedIds(keys as string[]),
-        }}
+        rowSelection={
+          compact
+            ? undefined
+            : {
+                selectedRowKeys: selectedIds,
+                onChange: (keys) => setSelectedIds(keys as string[]),
+              }
+        }
         loading={loading}
         className="activity-log-table"
-        scroll={{ x: 'max-content' }}
         pagination={{
           current: page,
           pageSize: PAGE_SIZE,
@@ -239,6 +259,7 @@ export default function ActivityLog() {
           showSizeChanger: false,
         }}
       />
+      </div>
     </div>
   );
 }
