@@ -2926,6 +2926,37 @@ ai.get('/dues-by-year', aiRoute(async (req) => {
   const year = Number.parseInt(req.query.year, 10);
   if (!Number.isInteger(year) || year < 2000 || year > today.year + 1) throw badRequest(`year must be a year like ${today.year - 1}`);
   const search = searchOf(req);
+  // Every member who still owes for that year - "pending of last year" asked
+  // by the admin, who means the whole masjid. Before, that answered 400 (the
+  // admin is not one member), so the question got no answer (found by the user).
+  const everyone = !search && (req.query.everyone === 'true' || (req.aiUser.isAdmin && !req.aiUser.memberId));
+  if (everyone) {
+    adminOnly(req, "every member's dues");
+    const owing = [];
+    let withPlan = 0;
+    for (const m of await dbAll('SELECT * FROM members ORDER BY position ASC')) {
+      const { breakdown, dues } = await computeMonthlyBreakdownForYear(m, year, today);
+      if (!dues.hasPlan) continue;
+      withPlan++;
+      const due = Math.max(Number(dues.due) || 0, 0);
+      if (due <= 0) continue;
+      owing.push({
+        id: m.unique_id,
+        name: m.name.trim(),
+        nameInEnglishLetters: toLatin(m.name).trim(),
+        due,
+        ...(breakdown ? { missedMonths: breakdown.filter((e) => e.status === 'missed').map((e) => e.label) } : {}),
+      });
+    }
+    return inRupees({
+      year,
+      membersWithAPlan: withPlan,
+      membersStillOwing: owing.length,
+      totalDue: owing.reduce((sum, o) => sum + o.due, 0),
+      members: owing,
+      ...(owing.length ? {} : { note: `Every member with a payment plan paid in full for ${year}` }),
+    });
+  }
   let members;
   if (search) {
     const found = findMembers(search, await dbAll('SELECT * FROM members ORDER BY position ASC'));

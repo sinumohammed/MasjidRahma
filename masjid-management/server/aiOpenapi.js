@@ -79,10 +79,11 @@ export const AI_OPENAPI = {
     '/ai/dues-by-year': {
       get: {
         operationId: 'dues_by_year',
-        summary: 'One calendar year\'s dues for a member, month by month: expected, paid, still due, missed / partly paid / paid months - for a past or particular year ("my pending for last year", "dues of Sinu TK in 2025"). For a member: only their own',
+        summary: 'One calendar year\'s dues, for a past or particular year. With search, or a member asking about their own: month by month - expected, paid, still due, missed / partly paid / paid months ("my pending for last year", "dues of Sinu TK in 2025"). With everyone=true (admin only): every member who still owes for that year, with the total ("pending dues of last year", "who did not pay in 2025"). For a member: only their own',
         parameters: [
           { name: 'year', in: 'query', required: true, description: 'The calendar year, e.g. 2025 (work out "last year" from today\'s date)', schema: { type: 'integer' } },
           { name: 'search', in: 'query', required: false, description: 'A member name in English letters or Malayalam, or a member id like MR#001; leave out for the asking member\'s own', schema: { type: 'string' } },
+          { name: 'everyone', in: 'query', required: false, description: 'true: every member who still owes for that year (admin only) - when the question is about the masjid\'s members, not one member or "my"', schema: { type: 'boolean' } },
         ],
       },
     },
