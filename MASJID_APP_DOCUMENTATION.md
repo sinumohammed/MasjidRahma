@@ -7,6 +7,16 @@
 
 ---
 
+## 🆕 RECENT UPDATES (2026-10-17)
+
+### Assistant: last year's dues for everyone
+`GET /api/ai/dues-by-year?year=` with no member named now gives the admin every member still owing that year, with the total (`everyone=true` asks for it explicitly; a member asking for everyone gets 403). Before, an admin not linked to a household got a 400 and "previous year pending" had no answer. Described in `server/aiOpenapi.js`; after deploying a change there, run `npm run app -- refresh masjid` in the AI service so it reads the new description.
+
+### Assistant: new look and ready questions in Malayalam
+- `src/components/AssistantIcon.tsx`: the assistant's mark - a masjid dome as a bot's head with a crescent on top; used on the floating launcher (`.assistant-launcher` in `App.tsx`), the chat header, next to answers and in the menu.
+- `AssistantChat.tsx` / `.css`: header "Masjid Assistant · AI" with whom it answers as, answer cards with bullets, ready questions as cards (welcome) and chips (above the composer), its own green accent (`CHAT_THEME`).
+- Ready questions per role, in Malayalam (`ADMIN_SUGGESTIONS`, `MEMBER_SUGGESTIONS`, `GUEST_SUGGESTIONS`). The AI service's `eval:masjid` asks each one - keep its copies in `eval/masjid-app.js` the same when changing them.
+
 ## 🆕 RECENT UPDATES (2026-07-28)
 
 ### New: admin usage timeline ("Activity" page)
