@@ -18,20 +18,21 @@ import { getCategoryStats, getTransactions, type CategoryStat, type DateRangePar
 import { useSettings } from '../context/SettingsContext';
 import './ChartsPanel.css';
 
-// Categorical palette, fixed order (validated for CVD safety) — never reassigned by rank.
+// Categorical palette in the app's emerald-and-gold family, fixed order -
+// never reassigned by rank.
 const CATEGORY_COLORS = [
-  '#2a78d6', // blue
-  '#1baf7a', // aqua
-  '#eda100', // yellow
-  '#008300', // green
-  '#4a3aa7', // violet
-  '#e34948', // red
-  '#e87ba4', // magenta
-  '#eb6834', // orange
+  '#0f6b52', // emerald
+  '#b07d1c', // gold
+  '#2f6aa3', // blue
+  '#be3455', // rose
+  '#6a4fb3', // violet
+  '#2a9d8f', // teal
+  '#c2622d', // terracotta
+  '#5b6b63', // slate
 ];
 
-const INCOME_COLOR = '#52c41a';
-const EXPENSE_COLOR = '#f5222d';
+const INCOME_COLOR = '#14805f';
+const EXPENSE_COLOR = '#be3455';
 const MAX_CATEGORY_SLICES = 7;
 
 interface TrendPoint {
@@ -131,17 +132,17 @@ export default function ChartsPanel({ dateRange }: ChartsPanelProps) {
   }
 
   return (
-    <Row gutter={[24, 24]} className="charts-panel" style={{ marginTop: 40 }}>
+    <Row gutter={[16, 16]} className="charts-panel">
       <Col xs={24} lg={11}>
-        <Card title="🧾 Expenses by Category" className="chart-card" variant="borderless">
+        <Card title="Expenses by category" className="chart-card" variant="borderless">
           {categoryData.length === 0 ? (
             <Empty description="No expense data yet" />
           ) : (
             <ResponsiveContainer width="100%" height={Math.max(240, categoryData.length * 44)}>
               <BarChart data={categoryData} layout="vertical" margin={{ top: 8, right: 24, bottom: 8, left: 8 }}>
-                <CartesianGrid horizontal={false} stroke="#e1e0d9" />
-                <XAxis type="number" tickFormatter={(v) => `${currencySymbol}${v.toLocaleString()}`} stroke="#898781" fontSize={12} />
-                <YAxis type="category" dataKey="category" stroke="#898781" fontSize={12} width={110} />
+                <CartesianGrid horizontal={false} stroke="var(--m-border)" />
+                <XAxis type="number" tickFormatter={(v) => `${currencySymbol}${v.toLocaleString()}`} stroke="var(--m-muted)" fontSize={12} />
+                <YAxis type="category" dataKey="category" stroke="var(--m-muted)" fontSize={12} width={110} />
                 <Tooltip content={<CustomTooltip currencySymbol={currencySymbol} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
                 <Bar dataKey="total" name="Expense" radius={[0, 4, 4, 0]} maxBarSize={24}>
                   {categoryData.map((entry, index) => (
@@ -155,20 +156,20 @@ export default function ChartsPanel({ dateRange }: ChartsPanelProps) {
       </Col>
 
       <Col xs={24} lg={13}>
-        <Card title="📈 Income vs Expense Trend" className="chart-card" variant="borderless">
+        <Card title="Income and expenses over time" className="chart-card" variant="borderless">
           {trendData.length === 0 ? (
             <Empty description="No transaction data yet" />
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={trendData} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-                <CartesianGrid vertical={false} stroke="#e1e0d9" />
+                <CartesianGrid vertical={false} stroke="var(--m-border)" />
                 <XAxis
                   dataKey="date"
-                  stroke="#898781"
+                  stroke="var(--m-muted)"
                   fontSize={12}
                   tickFormatter={(v) => dayjs(v).format('MMM D')}
                 />
-                <YAxis stroke="#898781" fontSize={12} tickFormatter={(v) => `${currencySymbol}${v.toLocaleString()}`} />
+                <YAxis stroke="var(--m-muted)" fontSize={12} tickFormatter={(v) => `${currencySymbol}${v.toLocaleString()}`} />
                 <Tooltip content={<CustomTooltip currencySymbol={currencySymbol} />} />
                 <Legend wrapperStyle={{ fontSize: 13 }} />
                 <Line type="monotone" dataKey="income" name="Income" stroke={INCOME_COLOR} strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />

@@ -183,7 +183,8 @@ const ADMIN_SUGGESTIONS: Suggestion[] = [
 
 // The assistant's own accent - the green of its icon - inside the chat only;
 // the rest of the app keeps its theme (light and dark come from the app).
-const CHAT_THEME = { token: { colorPrimary: '#0f766e' } };
+// The app's theme (src/theme.ts) - nothing of its own any more.
+const CHAT_THEME = {};
 
 // `embedded`: inside the floating chat's drawer; `onClose` closes it.
 export default function AssistantChat({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void }) {

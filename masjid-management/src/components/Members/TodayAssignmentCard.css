@@ -1,25 +1,39 @@
-.today-assignment-card {
+.today-assignment-card.ant-card {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 20px;
-  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.25);
+  background:
+    radial-gradient(90% 120% at 100% 0%, rgba(233, 196, 106, 0.22), transparent 55%),
+    linear-gradient(135deg, #0f6b52 0%, var(--m-forest) 55%, var(--m-forest-2) 100%);
+  border-radius: 22px;
+  box-shadow: 0 10px 30px rgba(11, 61, 47, 0.28);
   color: white;
 }
 
+/* The masjid's eight-point star lattice, faint, fading to the left. */
 .today-assignment-card::before {
   content: '';
   position: absolute;
-  top: -60px;
-  right: -60px;
-  width: 180px;
-  height: 180px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 70%);
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Cg fill='none' stroke='%23e9c46a' stroke-opacity='0.16' stroke-width='1'%3E%3Cpath d='M26 7l5.4 13.6L45 26l-13.6 5.4L26 45l-5.4-13.6L7 26l13.6-5.4z'/%3E%3Crect x='14' y='14' width='24' height='24' transform='rotate(45 26 26)'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-image: linear-gradient(90deg, transparent 15%, #000 85%);
+  mask-image: linear-gradient(90deg, transparent 15%, #000 85%);
   pointer-events: none;
 }
 
-.today-assignment-card :global(.ant-card-body) {
+/* A thin gold line along the top edge. */
+.today-assignment-card::after {
+  content: '';
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(90deg, transparent, var(--m-gold-bright), transparent);
+  pointer-events: none;
+}
+
+.today-assignment-card .ant-card-body {
   position: relative;
   padding: 22px 24px;
 }
@@ -47,7 +61,7 @@
 }
 
 .today-assignment-avatar {
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 3px #0b3d2f, 0 0 0 5px rgba(233, 196, 106, 0.85);
 }
 
 .today-assignment-info {
@@ -70,14 +84,16 @@
 
 .today-assignment-label {
   font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.85;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #e9c46a;
 }
 
 .today-assignment-name {
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
   overflow-wrap: break-word;
 }
 
@@ -86,17 +102,21 @@
   align-items: center;
   gap: 6px;
   font-size: 14px;
+  font-weight: 600;
   color: white;
-  opacity: 0.9;
-  margin-top: 2px;
+  margin-top: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   text-decoration: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .today-assignment-phone:hover,
 .today-assignment-phone:focus {
   color: white;
-  opacity: 1;
-  text-decoration: underline;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .today-assignment-original {
@@ -112,7 +132,7 @@
   flex-direction: column;
   justify-content: center;
   padding-left: 20px;
-  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 /* Admin's corner swap/revert icons sit top-right of the whole card. On web
@@ -123,7 +143,7 @@
    640px breakpoint below) keeps the old side-panel-only push-down, since
    there's no shared midpoint to misalign there. */
 @media (min-width: 641px) {
-  .today-assignment-card.has-actions :global(.ant-card-body) {
+  .today-assignment-card.has-actions .ant-card-body {
     padding-top: 46px;
   }
 }
@@ -131,7 +151,6 @@
 @media (max-width: 640px) {
   .today-assignment-split.has-actions .today-assignment-side {
     justify-content: flex-start;
-    padding-top: 38px;
   }
 }
 
@@ -139,10 +158,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.75;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e9c46a;
   margin-bottom: 4px;
 }
 
@@ -159,7 +177,7 @@
 }
 
 .today-assignment-side-name {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   margin-bottom: 4px;
   overflow-wrap: break-word;
@@ -173,7 +191,7 @@
 }
 
 .today-assignment-card.my-turn {
-  box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.6), 0 8px 24px rgba(102, 126, 234, 0.25);
+  box-shadow: 0 0 0 3px var(--m-gold-bright), 0 10px 30px rgba(11, 61, 47, 0.28);
 }
 
 .today-assignment-card.clickable {
@@ -183,7 +201,7 @@
 
 .today-assignment-card.clickable:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 28px rgba(102, 126, 234, 0.35);
+  box-shadow: 0 16px 36px rgba(11, 61, 47, 0.34);
 }
 
 .today-assignment-actions {
@@ -206,7 +224,7 @@
   color: white;
 }
 
-.today-assignment-swap-btn :global(.anticon) {
+.today-assignment-swap-btn .anticon {
   font-size: 12px;
 }
 
@@ -225,12 +243,12 @@
   font-weight: 600;
   margin-bottom: 6px;
   font-size: 13px;
-  color: #374151;
+  color: var(--m-text-2);
 }
 
 .swap-modal-hint {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--m-muted);
 }
 
 /* Responsive */
@@ -251,12 +269,12 @@
     padding-left: 0;
     padding-top: 14px;
     border-left: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.25);
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
   }
 }
 
 @media (max-width: 480px) {
-  .today-assignment-card :global(.ant-card-body) {
+  .today-assignment-card .ant-card-body {
     padding: 16px 18px;
   }
 
@@ -270,7 +288,7 @@
   }
 
   .today-assignment-name {
-    font-size: 17px;
+    font-size: 20px;
   }
 
   .today-assignment-phone {

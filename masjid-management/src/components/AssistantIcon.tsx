@@ -10,9 +10,9 @@ export default function AssistantIcon({ size = 32, bare = false }: { size?: numb
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden focusable="false" className="assistant-icon">
       <defs>
         <linearGradient id={`${id}-bg`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#14b8a6" />
-          <stop offset="0.55" stopColor="#0f766e" />
-          <stop offset="1" stopColor="#134e4a" />
+          <stop offset="0" stopColor="#1f9a74" />
+          <stop offset="0.55" stopColor="#0f6b52" />
+          <stop offset="1" stopColor="#0b3d2f" />
         </linearGradient>
         <linearGradient id={`${id}-gold`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#fde68a" />
@@ -30,9 +30,9 @@ export default function AssistantIcon({ size = 32, bare = false }: { size?: numb
       <rect x="47" y="36" width="4" height="9" rx="2" fill="#ffffff" fillOpacity="0.9" />
       {/* face, visor, eyes */}
       <rect x="16.5" y="29.5" width="31" height="21" rx="7.5" fill="#ffffff" />
-      <rect x="20.5" y="34.5" width="23" height="11" rx="5.5" fill="#134e4a" />
-      <circle cx="27" cy="40" r="2.5" fill="#5eead4" />
-      <circle cx="37" cy="40" r="2.5" fill="#5eead4" />
+      <rect x="20.5" y="34.5" width="23" height="11" rx="5.5" fill="#0b3d2f" />
+      <circle cx="27" cy="40" r="2.5" fill="#8fe0c2" />
+      <circle cx="37" cy="40" r="2.5" fill="#8fe0c2" />
       {/* a spark: it thinks */}
       <path d="M51 12.5l1.1 2.6l2.6 1.1l-2.6 1.1L51 19.9l-1.1-2.6l-2.6-1.1l2.6-1.1z" fill={`url(#${id}-gold)`} />
     </svg>

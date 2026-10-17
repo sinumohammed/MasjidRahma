@@ -52,6 +52,12 @@ export default defineConfig({
       // requests always go straight to the network, uncached.
     }),
   ],
+  // Local preview against the live backend: `npm run dev:live` serves this
+  // frontend on this computer and forwards /api to the deployed API, so the
+  // browser only ever talks to localhost (no CORS) and shows the real data.
+  server: process.env.MASJID_API_PROXY
+    ? { proxy: { '/api': { target: process.env.MASJID_API_PROXY, changeOrigin: true, secure: true } } }
+    : undefined,
   build: {
     rollupOptions: {
       output: {

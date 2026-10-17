@@ -7,7 +7,8 @@
     "dev": "vite --host",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:live": "MASJID_API_PROXY=https://masjid-management-omega.vercel.app VITE_API_URL=/api vite --host"
   },
   "dependencies": {
     "antd": "^6.5.0",

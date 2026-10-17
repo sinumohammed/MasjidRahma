@@ -1,113 +1,106 @@
+/* The app's look: emerald and gold, one set of colours for every screen.
+   Every component reads these tokens (var(--m-...)), in light and in dark
+   (data-theme on <html>, SettingsContext). antd's own parts get the same
+   colours from src/theme.ts. */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --m-bg: #f5f2ea;
+  --m-surface: #ffffff;
+  --m-surface-2: #faf8f2;
+  --m-border: #e6e0d1;
+  --m-border-strong: #d6cdb8;
+  --m-text: #18251f;
+  --m-text-2: #3d4c45;
+  --m-muted: #6b7a72;
+  --m-primary: #0f6b52;
+  --m-primary-strong: #0a5340;
+  --m-primary-soft: #e2f0e9;
+  --m-gold: #b07d1c;
+  --m-gold-bright: #d4a43a;
+  --m-gold-soft: #f6ecd3;
+  --m-rose: #be3455;
+  --m-rose-soft: #f9e5ea;
+  --m-blue: #2f6aa3;
+  --m-blue-soft: #e4eef8;
+  --m-violet: #6a4fb3;
+  --m-violet-soft: #eeeafa;
+  /* The deep green of the sidebar and the hero cards - the same in both themes. */
+  --m-forest: #0b3d2f;
+  --m-forest-2: #072a20;
+  --m-radius: 16px;
+  --m-radius-sm: 10px;
+  --m-shadow: 0 1px 2px rgba(24, 37, 31, 0.05), 0 6px 20px rgba(24, 37, 31, 0.06);
+  --m-shadow-lift: 0 2px 4px rgba(24, 37, 31, 0.06), 0 14px 32px rgba(24, 37, 31, 0.1);
+  --m-font: 'Plus Jakarta Sans', 'Noto Sans Malayalam', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --m-nav-h: 0px; /* the phone's bottom tab bar, set in App.css */
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  color-scheme: light;
+  font-family: var(--m-font);
+  color: var(--m-text);
+  background: var(--m-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  text-rendering: optimizeLegibility;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+:root[data-theme='dark'] {
+  --m-bg: #0b1310;
+  --m-surface: #121d19;
+  --m-surface-2: #17241f;
+  --m-border: #22332c;
+  --m-border-strong: #2e4439;
+  --m-text: #e7eee9;
+  --m-text-2: #c4d1ca;
+  --m-muted: #8fa198;
+  --m-primary: #35b98f;
+  --m-primary-strong: #4fd1a7;
+  --m-primary-soft: rgba(53, 185, 143, 0.14);
+  --m-gold: #ddb257;
+  --m-gold-bright: #ecc56d;
+  --m-gold-soft: rgba(221, 178, 87, 0.14);
+  --m-rose: #f07a95;
+  --m-rose-soft: rgba(240, 122, 149, 0.14);
+  --m-blue: #7cb0e6;
+  --m-blue-soft: rgba(124, 176, 230, 0.14);
+  --m-violet: #a993ec;
+  --m-violet-soft: rgba(169, 147, 236, 0.14);
+  --m-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.25);
+  --m-shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.35), 0 14px 32px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
+  padding: 0;
+  background: var(--m-bg);
+}
+
+#root {
+  min-height: 100svh;
 }
 
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+h2,
+h3,
+h4 {
+  margin: 0;
+  color: var(--m-text);
+  letter-spacing: -0.01em;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
 p {
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+/* Amounts line up in columns. */
+.m-num {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Phones: every text field at 16px. iPhone Safari zooms into any smaller one

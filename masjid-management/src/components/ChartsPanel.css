@@ -1,7 +1,13 @@
-.chart-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  background: white !important;
+.chart-card.ant-card {
+  border-radius: var(--m-radius);
+  border: 1px solid var(--m-border);
+  box-shadow: var(--m-shadow);
+  background: var(--m-surface);
+}
+
+.chart-card .ant-card-head {
+  border-bottom-color: var(--m-border);
+  font-weight: 700;
 }
 
 .charts-loading {
@@ -12,8 +18,8 @@
 }
 
 .chart-tooltip {
-  background: #ffffff;
-  border: 1px solid #e1e0d9;
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
   border-radius: 8px;
   padding: 8px 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
@@ -21,7 +27,7 @@
 }
 
 .chart-tooltip-label {
-  color: #52514e;
+  color: var(--m-muted);
   font-weight: 600;
   margin-bottom: 4px;
 }
@@ -40,13 +46,13 @@
 }
 
 .chart-tooltip-name {
-  color: #52514e;
+  color: var(--m-muted);
 }
 
 .chart-tooltip-value {
   margin-left: auto;
   font-weight: 600;
-  color: #0b0b0b;
+  color: var(--m-text);
 }
 
 @media (max-width: 768px) {

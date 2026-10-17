@@ -37,15 +37,17 @@ import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
 const MASJID_PAYMENT_CATEGORY = 'Masjid payment';
+// ₹42,300 - Indian digit grouping, paise only when there are any.
+const money = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const IMAM_SALARY_CATEGORY = 'Imam Salary';
 const STAFF_SALARY_CATEGORY = 'Staff Salary';
-const SALARY_COLORS = ['#4a3aa7', '#eb6834'];
+const SALARY_COLORS = ['#0f6b52', '#b07d1c'];
 const MEMBER_TYPE_LABELS: Record<MemberType, string> = {
   regular: 'Regular',
   non_rotation: 'Non-Rotation',
 };
-const MEMBER_TYPE_COLORS = ['#2a78d6', '#eda100'];
-const BANK_COLORS = ['#4a3aa7', '#eb6834', '#2a78d6', '#eda100', '#52c41a', '#cf1322'];
+const MEMBER_TYPE_COLORS = ['#0f6b52', '#b07d1c'];
+const BANK_COLORS = ['#0f6b52', '#b07d1c', '#2f6aa3', '#6a4fb3', '#be3455', '#3d4c45'];
 
 export interface TransactionFilter {
   type?: 'income' | 'expense';
@@ -203,7 +205,7 @@ export default function Dashboard({
   return (
     <>
       <div className="dashboard-container">
-        <Row gutter={[24, 24]} className="dashboard-grid" style={{ marginBottom: '24px' }}>
+        <Row gutter={[24, 24]} className="dashboard-grid">
           <Col xs={24}>
             <TodayAssignmentCard onOpenYearlySchedule={onNavigateToYearlySchedule} />
           </Col>
@@ -235,6 +237,9 @@ export default function Dashboard({
 
         {isAdmin && (
           <>
+            <h2 className="dashboard-section-title">
+              Overview <span>All time · tap a card for details</span>
+            </h2>
             {/* Compact stat tiles */}
             <div className="stat-tile-row">
               <div
@@ -248,7 +253,7 @@ export default function Dashboard({
                   <span className="stat-tile-label">Total Income</span>
                   <span className="stat-tile-value income-value">
                     {currencySymbol}
-                    {(summary?.totalIncome || 0).toFixed(2)}
+                    {money(summary?.totalIncome || 0)}
                   </span>
                 </div>
               </div>
@@ -264,7 +269,7 @@ export default function Dashboard({
                   <span className="stat-tile-label">Total Expenses</span>
                   <span className="stat-tile-value expense-value">
                     {currencySymbol}
-                    {(summary?.totalExpense || 0).toFixed(2)}
+                    {money(summary?.totalExpense || 0)}
                   </span>
                 </div>
               </div>
@@ -280,7 +285,7 @@ export default function Dashboard({
                   <span className="stat-tile-label">Current Balance</span>
                   <span className={`stat-tile-value balance-value ${isPositive ? 'positive' : 'negative'}`}>
                     {currencySymbol}
-                    {balance.toFixed(2)}
+                    {money(balance)}
                   </span>
                 </div>
               </div>
@@ -296,7 +301,7 @@ export default function Dashboard({
                   <span className="stat-tile-label">Total Masjid Payment</span>
                   <span className="stat-tile-value masjid-value">
                     {currencySymbol}
-                    {masjidPaymentTotal.toFixed(2)}
+                    {money(masjidPaymentTotal)}
                   </span>
                 </div>
               </div>
@@ -312,7 +317,7 @@ export default function Dashboard({
                   <span className="stat-tile-label">Staff Salary</span>
                   <span className="stat-tile-value staff-value">
                     {currencySymbol}
-                    {staffSalaryCombinedTotal.toFixed(2)}
+                    {money(staffSalaryCombinedTotal)}
                   </span>
                 </div>
               </div>
@@ -365,7 +370,7 @@ export default function Dashboard({
                     <Cell key={entry.category} fill={SALARY_COLORS[index % SALARY_COLORS.length]} />
                   ))}
                 </Pie>
-                <RechartsTooltip formatter={(value) => `${currencySymbol}${Number(value).toFixed(2)}`} />
+                <RechartsTooltip formatter={(value) => `${currencySymbol}${money(Number(value))}`} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -442,7 +447,7 @@ export default function Dashboard({
                     <Cell key={entry.id} fill={BANK_COLORS[index % BANK_COLORS.length]} />
                   ))}
                 </Pie>
-                <RechartsTooltip formatter={(value) => `${currencySymbol}${Number(value).toFixed(2)}`} />
+                <RechartsTooltip formatter={(value) => `${currencySymbol}${money(Number(value))}`} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>

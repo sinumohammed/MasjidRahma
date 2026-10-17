@@ -18,7 +18,7 @@ const TABLE_LINE = /^\s*\|.*\|\s*$/;
 const SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 export const NUMBER = /^[-+]?\s*[₹$]?\s*[\d,]+(\.\d+)?\s*%?$/;
 export const TOTAL = /^(total|grand total|ആകെ|മൊത്തം)/i;
-export const CHART_COLORS = ['#0d9488', '#d97706', '#4f46e5', '#e11d48', '#0284c7', '#7c3aed', '#65a30d', '#db2777'];
+export const CHART_COLORS = ['#0f6b52', '#b07d1c', '#2f6aa3', '#be3455', '#2a9d8f', '#6a4fb3', '#65a30d', '#db2777'];
 
 const cells = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
 

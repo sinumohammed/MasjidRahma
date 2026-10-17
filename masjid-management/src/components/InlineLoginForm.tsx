@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Form, Input, Button, message } from 'antd';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
+import BrandMark from './BrandMark';
 import './InlineLoginForm.css';
 
 export default function InlineLoginForm() {
@@ -31,16 +32,19 @@ export default function InlineLoginForm() {
   return (
     <div className="inline-login-card">
       <div className="inline-login-header">
-        <LockOutlined />
-        <span>{isSetupMode ? 'Create Admin Account' : 'Log In'}</span>
+        <BrandMark size={44} />
+        <div>
+          <h2>{isSetupMode ? 'Create the admin account' : 'Welcome back'}</h2>
+          <p>{isSetupMode ? 'The first account manages the masjid.' : 'Log in to see your dues, payments and duty days.'}</p>
+        </div>
       </div>
-      <Form form={form} layout="vertical" onFinish={handleSubmit} className="inline-login-form">
+      <Form form={form} layout="vertical" onFinish={handleSubmit} className="inline-login-form" requiredMark={false}>
         <Form.Item
-          label={isSetupMode ? 'Username' : 'Username or Member ID (e.g. MR#012)'}
+          label={isSetupMode ? 'Username' : 'Member ID or username'}
           name="username"
           rules={[{ required: true, message: 'Please enter a username' }]}
         >
-          <Input prefix={<UserOutlined />} placeholder="Username or Member ID" />
+          <Input prefix={<UserOutlined />} placeholder={isSetupMode ? "Username" : "e.g. MR#012"} autoComplete="username" />
         </Form.Item>
         <Form.Item
           label="Password"
@@ -50,7 +54,7 @@ export default function InlineLoginForm() {
             ...(isSetupMode ? [{ min: 6, message: 'Password must be at least 6 characters' }] : []),
           ]}
         >
-          <Input.Password prefix={<LockOutlined />} placeholder="Password" />
+          <Input.Password prefix={<LockOutlined />} placeholder="Password" autoComplete="current-password" />
         </Form.Item>
         {isSetupMode && (
           <Form.Item
@@ -73,7 +77,7 @@ export default function InlineLoginForm() {
           </Form.Item>
         )}
         <Form.Item style={{ marginBottom: 0 }}>
-          <Button type="primary" htmlType="submit" loading={loading} block>
+          <Button type="primary" htmlType="submit" loading={loading} block size="large">
             {isSetupMode ? 'Create Account' : 'Log In'}
           </Button>
         </Form.Item>

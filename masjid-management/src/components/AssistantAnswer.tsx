@@ -81,7 +81,7 @@ function AnswerChart({ chart }: { chart: ChartSpec }) {
             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--a-border)" />
             <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => Number(v).toLocaleString('en-IN')} />
             <YAxis type="category" dataKey="label" width={110} tick={{ fontSize: 11 }} />
-            <Tooltip formatter={(v) => fmt(Number(v))} cursor={{ fill: 'rgba(13, 148, 136, 0.08)' }} />
+            <Tooltip formatter={(v) => fmt(Number(v))} cursor={{ fill: 'rgba(15, 107, 82, 0.08)' }} />
             <Bar isAnimationActive={false} dataKey="value" fill={CHART_COLORS[0]} radius={[0, 6, 6, 0]} barSize={16} />
           </BarChart>
         )}

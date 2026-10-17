@@ -9,15 +9,14 @@
    assistant's own green (CHAT_THEME in AssistantChat.tsx). */
 
 .assistant-shell {
-  --a-bg: var(--ant-color-bg-container, #fff);
-  --a-border: var(--ant-color-border-secondary, rgba(127, 127, 127, 0.2));
-  --a-text: var(--ant-color-text, rgba(0, 0, 0, 0.88));
-  --a-muted: var(--ant-color-text-secondary, rgba(127, 127, 127, 0.9));
-  /* Not the app's primary: the antd theme of the chat (CHAT_THEME) applies
-     to antd's own parts only, not to this element's variables. */
-  --a-primary: #0d9488;
-  --a-gold: #d97706;
-  --a-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
+  /* The app's tokens (index.css), so the chat follows light and dark. */
+  --a-bg: var(--m-surface);
+  --a-border: var(--m-border);
+  --a-text: var(--m-text);
+  --a-muted: var(--m-muted);
+  --a-primary: var(--m-primary);
+  --a-gold: var(--m-gold);
+  --a-shadow: var(--m-shadow);
   display: flex;
   flex-direction: column;
   min-height: 200px;
@@ -53,7 +52,7 @@
   padding: 12px 10px 12px 16px;
   border-bottom: 1px solid var(--a-border);
   background:
-    radial-gradient(120% 140% at 0% 0%, rgba(20, 184, 166, 0.1), transparent 55%),
+    radial-gradient(120% 140% at 0% 0%, rgba(31, 154, 116, 0.1), transparent 55%),
     var(--a-bg);
   flex: 0 0 auto;
 }
@@ -63,7 +62,7 @@
   display: inline-flex;
   flex: 0 0 auto;
   border-radius: 50%;
-  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.35);
+  box-shadow: 0 2px 8px rgba(15, 107, 82, 0.35);
 }
 
 .assistant-online {
@@ -102,7 +101,7 @@
   padding: 0 6px;
   border-radius: 6px;
   color: #fff;
-  background: linear-gradient(135deg, #14b8a6, #0f766e);
+  background: linear-gradient(135deg, #1f9a74, #0f6b52);
 }
 
 .assistant-head-sub {
@@ -120,7 +119,7 @@
   line-height: 24px;
   padding: 0 10px;
   border-radius: 12px;
-  background: rgba(15, 118, 110, 0.1);
+  background: rgba(15, 107, 82, 0.1);
   color: var(--a-primary);
   font-weight: 500;
   white-space: nowrap;
@@ -178,11 +177,11 @@
 }
 
 .assistant-bubble.is-user {
-  background: linear-gradient(135deg, #14b8a6, #0f766e);
+  background: linear-gradient(135deg, #1f9a74, #0f6b52);
   color: #fff;
   border-top-right-radius: 6px;
   white-space: pre-wrap;
-  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.25);
+  box-shadow: 0 2px 8px rgba(15, 107, 82, 0.25);
 }
 
 .assistant-bubble.is-assistant {
@@ -240,7 +239,7 @@
   font-size: 11px;
   white-space: normal;
   color: var(--a-primary);
-  background: rgba(15, 118, 110, 0.1);
+  background: rgba(15, 107, 82, 0.1);
 }
 
 /* "Checking the masjid records…" - three dots and the words */
@@ -296,7 +295,7 @@
   display: inline-flex;
   border-radius: 50%;
   margin-bottom: 14px;
-  box-shadow: 0 0 0 8px rgba(20, 184, 166, 0.1), 0 8px 24px rgba(15, 118, 110, 0.3);
+  box-shadow: 0 0 0 8px rgba(31, 154, 116, 0.1), 0 8px 24px rgba(15, 107, 82, 0.3);
 }
 
 .assistant-empty-greeting {
@@ -344,8 +343,8 @@
 }
 
 .assistant-prompt {
-  --tone: #0f766e;
-  --tone-soft: rgba(15, 118, 110, 0.12);
+  --tone: #0f6b52;
+  --tone-soft: rgba(15, 107, 82, 0.12);
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -404,7 +403,7 @@
   margin-top: 1px;
 }
 
-.tone-teal { --tone: #0d9488; --tone-soft: rgba(13, 148, 136, 0.13); }
+.tone-teal { --tone: var(--m-primary); --tone-soft: rgba(15, 107, 82, 0.13); }
 .tone-amber { --tone: #d97706; --tone-soft: rgba(217, 119, 6, 0.13); }
 .tone-indigo { --tone: #4f46e5; --tone-soft: rgba(79, 70, 229, 0.12); }
 .tone-rose { --tone: #e11d48; --tone-soft: rgba(225, 29, 72, 0.11); }
@@ -512,7 +511,7 @@
 
 .assistant-composer:focus-within {
   border-color: var(--a-primary);
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12), 0 8px 24px rgba(15, 23, 42, 0.07);
+  box-shadow: 0 0 0 3px rgba(15, 107, 82, 0.12), 0 8px 24px rgba(15, 23, 42, 0.07);
 }
 
 .assistant-composer .ant-btn {
@@ -676,8 +675,8 @@
   color: #fff;
   font: inherit;
   cursor: pointer;
-  background: linear-gradient(135deg, #14b8a6, #0f766e 55%, #134e4a);
-  box-shadow: 0 6px 20px rgba(15, 118, 110, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  background: linear-gradient(135deg, #1f9a74, #0f6b52 55%, #0b3d2f);
+  box-shadow: 0 6px 20px rgba(15, 107, 82, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
@@ -686,7 +685,7 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  border: 2px solid rgba(20, 184, 166, 0.6);
+  border: 2px solid rgba(31, 154, 116, 0.6);
   animation: assistant-ring 2.8s ease-out infinite;
   pointer-events: none;
 }
@@ -703,11 +702,11 @@
 .assistant-launcher:hover,
 .assistant-launcher:focus-visible {
   transform: translateY(-2px);
-  box-shadow: 0 10px 28px rgba(15, 118, 110, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: 0 10px 28px rgba(15, 107, 82, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .assistant-launcher:focus-visible {
-  outline: 3px solid rgba(20, 184, 166, 0.5);
+  outline: 3px solid rgba(31, 154, 116, 0.5);
   outline-offset: 3px;
 }
 
@@ -773,7 +772,7 @@
 }
 
 .assistant-table th {
-  background: rgba(13, 148, 136, 0.08);
+  background: rgba(15, 107, 82, 0.08);
   color: var(--a-primary);
   font-size: 12px;
   font-weight: 600;

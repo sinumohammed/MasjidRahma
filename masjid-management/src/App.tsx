@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Layout, Menu, Button, Dropdown, Badge, ConfigProvider, Drawer, theme as antdTheme } from 'antd';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Layout, Menu, Button, Dropdown, Badge, ConfigProvider, Drawer } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -14,6 +14,9 @@ import {
   LogoutOutlined,
   HistoryOutlined,
   BankOutlined,
+  HomeOutlined,
+  AppstoreOutlined,
+  LoginOutlined,
 } from '@ant-design/icons';
 import Dashboard, { type TransactionFilter } from './components/Dashboard';
 import TransactionsList from './components/TransactionsList';
@@ -29,6 +32,8 @@ import MyNotifications from './components/MyNotifications';
 import AssistantChat from './components/AssistantChat';
 import AssistantIcon from './components/AssistantIcon';
 import AuthModal from './components/AuthModal';
+import BrandMark from './components/BrandMark';
+import { appTheme } from './theme';
 import { useSettings } from './context/SettingsContext';
 import { useAuth } from './context/AuthContext';
 import {
@@ -70,6 +75,21 @@ const SESSION_REQUIRED_KEYS = new Set([
   'announcements',
   'my-notifications',
 ]);
+
+// The header's title for each view (desktop; phones show the masjid's name).
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: 'Dashboard',
+  transactions: 'Transactions',
+  banks: 'Banks',
+  profile: 'Profile',
+  members: 'Members',
+  'yearly-schedule': 'Yearly Schedule',
+  assistant: 'Assistant',
+  activity: 'Activity',
+  settings: 'Settings',
+  announcements: 'Announcements',
+  'my-notifications': 'My Notifications',
+};
 
 function App() {
   const { theme } = useSettings();
@@ -375,6 +395,28 @@ function App() {
 
   const openYearlySchedule = () => setActiveKey('yearly-schedule');
 
+  // Phones: the main places as tabs at the bottom, within thumb reach; the
+  // rest of the menu stays in the sidebar, opened with "More".
+  const goTo = (key: string) => {
+    checkSessionExpiry();
+    if (key === 'transactions') setTransactionsFilter(null);
+    setActiveKey(key);
+    setCollapsed(true);
+  };
+  const bottomTabs: { key: string; label: string; icon: ReactNode; onClick: () => void; badge?: number }[] = [
+    { key: 'dashboard', label: 'Home', icon: <HomeOutlined />, onClick: () => goTo('dashboard') },
+    { key: 'yearly-schedule', label: 'Schedule', icon: <CalendarOutlined />, onClick: () => goTo('yearly-schedule') },
+    ...(assistantAvailable
+      ? [{ key: 'assistant', label: 'Assistant', icon: <span className="anticon"><AssistantIcon size={24} /></span>, onClick: () => setAssistantOpen(true) }]
+      : []),
+    ...(isAdmin
+      ? [{ key: 'transactions', label: 'Accounts', icon: <FileTextOutlined />, onClick: () => goTo('transactions') }]
+      : isLoggedIn
+        ? [{ key: 'profile', label: 'Profile', icon: <WalletOutlined />, onClick: () => goTo('profile'), badge: unreadMyNotifications }]
+        : [{ key: 'login', label: 'Log in', icon: <LoginOutlined />, onClick: () => setAuthModalOpen(true) }]),
+    { key: 'more', label: 'More', icon: <AppstoreOutlined />, onClick: () => setCollapsed(false) },
+  ];
+
   const userMenuItems: MenuProps['items'] = [
     ...(!isAdmin
       ? [
@@ -516,13 +558,10 @@ function App() {
   };
 
   return (
-    <ConfigProvider
-      theme={{
-        algorithm: theme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-      }}
-    >
-    <Layout style={{ minHeight: '100vh' }}>
+    <ConfigProvider theme={appTheme(theme)}>
+    <Layout className={`app-layout${isMobile ? ' has-bottom-nav' : ''}`}>
       <Layout.Sider
+        width={248}
         trigger={null}
         collapsible
         collapsed={collapsed}
@@ -534,8 +573,14 @@ function App() {
         }}
         className={isMobile ? 'app-sider-mobile' : undefined}
       >
-        <div className="app-logo">
-          <h2>{collapsed && !isMobile ? '🕌' : '🕌 Masjid'}</h2>
+        <div className={`app-brand${collapsed && !isMobile ? ' is-collapsed' : ''}`}>
+          <BrandMark size={40} />
+          {(!collapsed || isMobile) && (
+            <div className="app-brand-text">
+              <span className="app-brand-name">Masjid Rahma</span>
+              <span className="app-brand-sub">Food rota · Accounts</span>
+            </div>
+          )}
         </div>
         <Menu
           theme="dark"
@@ -549,17 +594,25 @@ function App() {
         <div className="app-sider-backdrop" onClick={() => setCollapsed(true)} />
       )}
       <Layout>
-        <Layout.Header style={{ padding: '0 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            className="sider-trigger-btn"
-          />
-          <div className="app-header-title">
-            Masjid Rahma
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Layout.Header className="app-header">
+          {isMobile ? (
+            <div className="app-header-brand">
+              <BrandMark size={32} />
+              <span>Masjid Rahma</span>
+            </div>
+          ) : (
+            <>
+              <Button
+                type="text"
+                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={() => setCollapsed(!collapsed)}
+                className="sider-trigger-btn"
+                aria-label={collapsed ? 'Open the menu' : 'Close the menu'}
+              />
+              <h1 className="app-header-title">{PAGE_TITLES[activeKey] ?? 'Masjid Rahma'}</h1>
+            </>
+          )}
+          <div className="app-header-actions">
             {isLoggedIn ? (
               <div className="app-header-user">
                 <span className="app-header-user-id">{username}</span>
@@ -581,7 +634,7 @@ function App() {
                   </button>
                 </Dropdown>
               </div>
-            ) : (
+            ) : isMobile && hasAdmin !== false ? null : (
               <Button
                 className="app-header-auth-btn"
                 type={hasAdmin === false ? 'primary' : 'default'}
@@ -595,21 +648,35 @@ function App() {
             )}
           </div>
         </Layout.Header>
-        <Layout.Content style={{ margin: '16px' }}>
-          {renderContent()}
+        <Layout.Content className="app-content">
+          <div className="app-page">{renderContent()}</div>
         </Layout.Content>
-        <Layout.Footer style={{ textAlign: 'center', color: '#8c8c8c' }}>
-          © 2026 Masjid Rahma | By Sinu
-        </Layout.Footer>
+        <Layout.Footer className="app-footer">© 2026 Masjid Rahma · By Sinu</Layout.Footer>
       </Layout>
     </Layout>
-    {/* The assistant from any screen, logged in or not - except its own page. */}
+    {isMobile && (
+      <nav className="app-bottom-nav" aria-label="Main">
+        {bottomTabs.map((t) => {
+          const active = t.key === 'more' ? !collapsed : t.key === 'assistant' ? assistantOpen : t.key === activeKey && collapsed && !assistantOpen;
+          return (
+            <button key={t.key} type="button" className={`app-bottom-tab${active ? ' is-active' : ''}`} onClick={t.onClick} aria-current={active ? 'page' : undefined}>
+              <Badge count={t.badge ?? 0} size="small" offset={[4, -2]}>
+                <span className="app-bottom-tab-icon">{t.icon}</span>
+              </Badge>
+              <span className="app-bottom-tab-label">{t.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    )}
+    {/* The assistant from any screen, logged in or not - except its own page.
+        On phones it is a bottom tab instead of the floating button. */}
     {assistantAvailable && activeKey !== 'assistant' && (
       <>
-        <button type="button" className="assistant-launcher" onClick={() => setAssistantOpen(true)} aria-label="Ask the masjid assistant" title="Ask the masjid assistant">
+        {!isMobile && <button type="button" className="assistant-launcher" onClick={() => setAssistantOpen(true)} aria-label="Ask the masjid assistant" title="Ask the masjid assistant">
           <AssistantIcon size={38} bare />
           <span className="assistant-launcher-label">Ask Assistant</span>
-        </button>
+        </button>}
         <Drawer
           title={null}
           closable={false}
