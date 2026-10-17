@@ -885,3 +885,44 @@ export const saveAssistantSettings = async (dailyLimits: AssistantDailyLimits): 
   if (!response.ok) throw new Error(result.error || 'Failed to save the assistant settings');
   return result;
 };
+
+// Personal MCP tokens (Settings, admin): for MCP clients such as Claude Code.
+export interface McpToken {
+  id: string;
+  name: string;
+  hint: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  username: string;
+}
+
+// Where an MCP client connects: the AI read-only API's MCP server.
+export const MCP_URL = new URL(`${API_BASE_URL}/ai/mcp`, window.location.origin).href;
+
+export const getMcpTokens = async (): Promise<McpToken[]> => {
+  const response = await apiFetch(`${API_BASE_URL}/admin/mcp-tokens`, { headers: { ...authHeaders() } });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Failed to load the MCP tokens');
+  return result.tokens;
+};
+
+// The token itself is in this answer only - it is never shown again.
+export const createMcpToken = async (name: string): Promise<{ id: string; name: string; hint: string; token: string }> => {
+  const response = await apiFetch(`${API_BASE_URL}/admin/mcp-tokens`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Failed to create the token');
+  return result;
+};
+
+export const revokeMcpToken = async (id: string): Promise<void> => {
+  const response = await apiFetch(`${API_BASE_URL}/admin/mcp-tokens/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Failed to revoke the token');
+};

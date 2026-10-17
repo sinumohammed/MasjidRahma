@@ -294,6 +294,21 @@ async function initializeDatabase() {
     )
   `);
 
+  // Personal tokens for MCP clients such as Claude Code (/api/ai/mcp): made
+  // by the admin in Settings, shown once, stored only as a SHA-256 hash.
+  // Deleting the row revokes the token at once.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mcp_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      hint TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      last_used_at TIMESTAMP
+    )
+  `);
+
   console.log('Database tables ready');
   await backfillMemberUsers();
   await seedDefaultContacts();
@@ -2696,6 +2711,9 @@ app.post('/api/activity/delete', requireAdmin, async (req, res) => {
 // MASJID_AI_TOKEN the whole section answers 503. The endpoints are described
 // for the AI in aiOpenapi.js (served at /api/ai/openapi.json). The same
 // endpoints are also MCP tools at /api/ai/mcp (aiMcp.js), for MCP clients.
+// An MCP client used by a person (Claude Code) has neither token: it sends
+// the admin's personal MCP token instead (mcp_..., made in Settings), which
+// opens /api/ai/mcp only, as that user with their role at the time of use.
 //
 // Every call also carries the logged-in user it is for (X-User-Token), so
 // the answers follow the user's role: the admin sees everything; a member
@@ -2732,7 +2750,34 @@ function aiUserFrom(req) {
   }
 }
 
-function requireAiToken(req, res, next) {
+const MCP_TOKEN_PREFIX = 'mcp_';
+const hashMcpToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+// A personal MCP token -> its user, with the role read now: a user who is no
+// longer admin gets nothing. Throws a status error otherwise.
+async function mcpTokenUser(token) {
+  const row = await dbGet(
+    `SELECT t.id AS token_id, u.id, u.is_admin, u.member_id
+     FROM mcp_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = $1`,
+    [hashMcpToken(token)]
+  );
+  if (!row) throw Object.assign(new Error('unknown or revoked personal MCP token'), { status: 401 });
+  if (!row.is_admin) throw Object.assign(new Error('personal MCP tokens are for the admin'), { status: 403 });
+  await dbRun('UPDATE mcp_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = $1', [row.token_id]);
+  return { id: row.id, guest: false, isAdmin: true, memberId: row.member_id ?? null };
+}
+
+async function requireAiToken(req, res, next) {
+  const bearer = getBearerToken(req) ?? '';
+  if (bearer.startsWith(MCP_TOKEN_PREFIX)) {
+    if (req.path !== '/mcp') return res.status(401).json({ error: 'a personal MCP token works only on /api/ai/mcp' });
+    try {
+      req.mcpUser = await mcpTokenUser(bearer);
+    } catch (error) {
+      return res.status(error.status ?? 500).json({ error: error.status ? error.message : 'Server error' });
+    }
+    return next();
+  }
   if (!MASJID_AI_TOKEN) return res.status(503).json({ error: 'AI access is not configured (MASJID_AI_TOKEN)' });
   const given = getBearerToken(req) ?? '';
   // Compared as hashes with timingSafeEqual, so the time taken says nothing about the token.
@@ -3107,7 +3152,8 @@ aiGet('/announcements', async (req) => {
 ai.post('/mcp', aiMcpHandler({
   openapi: AI_OPENAPI,
   handlers: aiHandlers,
-  userFrom: aiUserFrom,
+  // A personal MCP token's user (Claude Code), else the AI service's X-User-Token.
+  userFrom: (req) => req.mcpUser ?? aiUserFrom(req),
   guestPaths: AI_GUEST_PATHS,
   guestRefusal: AI_GUEST_REFUSAL,
   info: { name: 'masjid-rahma', title: 'Masjid Rahma', version: '1.0.0' },
@@ -3204,6 +3250,45 @@ app.put('/api/admin/assistant-settings', requireAdmin, async (req, res) => {
       );
     }
     res.json({ dailyLimits: await dailyLimits() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Personal MCP tokens (Settings, admin): for MCP clients such as Claude Code
+// to read the masjid data as this admin. The token is shown once; only its
+// hash is kept. Revoking deletes it, refused from the next request.
+app.get('/api/admin/mcp-tokens', requireAdmin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT t.id, t.name, t.hint, t.created_at, t.last_used_at, u.username
+       FROM mcp_tokens t JOIN users u ON u.id = t.user_id ORDER BY t.created_at DESC`
+    );
+    res.json({ tokens: rows.map((t) => ({ id: t.id, name: t.name, hint: t.hint, createdAt: t.created_at, lastUsedAt: t.last_used_at, username: t.username })) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/mcp-tokens', requireAdmin, async (req, res) => {
+  const name = String(req.body?.name ?? '').trim();
+  if (!name || name.length > 60) return res.status(400).json({ error: 'name: 1-60 characters, e.g. "Claude Code on my laptop"' });
+  try {
+    const token = `${MCP_TOKEN_PREFIX}${crypto.randomBytes(32).toString('base64url')}`;
+    const id = uuidv4();
+    const hint = token.slice(-4);
+    await dbRun('INSERT INTO mcp_tokens (id, user_id, name, token_hash, hint) VALUES ($1, $2, $3, $4, $5)', [id, req.user.id, name, hashMcpToken(token), hint]);
+    res.status(201).json({ id, name, hint, token });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/mcp-tokens/:id', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM mcp_tokens WHERE id = $1', [req.params.id]);
+    if (!result.rowCount) return res.status(404).json({ error: 'no such token' });
+    res.json({ revoked: req.params.id });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

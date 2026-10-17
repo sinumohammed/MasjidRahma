@@ -24,6 +24,7 @@ import { useSettings, CURRENCY_SYMBOLS, type CurrencyCode } from '../context/Set
 import { useAuth } from '../context/AuthContext';
 import { urlBase64ToUint8Array } from '../utils/push';
 import AssistantSettingsCard from './AssistantSettingsCard';
+import McpTokensCard from './McpTokensCard';
 import './SettingsPage.css';
 
 function downloadFile(filename: string, content: string, mimeType: string) {
@@ -399,6 +400,7 @@ export default function SettingsPage() {
       )}
 
       {isAdmin && <AssistantSettingsCard />}
+      {isAdmin && <McpTokensCard />}
 
       {isAdmin && (
         <Card title={<span><DownloadOutlined /> Export Data</span>} className="settings-card" variant="borderless">
