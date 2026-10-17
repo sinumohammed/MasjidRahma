@@ -20,6 +20,8 @@ import {
   BankOutlined,
 } from '@ant-design/icons';
 import AssistantIcon from './AssistantIcon';
+import AssistantAnswer from './AssistantAnswer';
+import { isWideAnswer } from './answerFormat';
 import {
   askAssistant,
   clearAssistantChat,
@@ -137,26 +139,6 @@ function loadVoiceLanguage(): string {
   } catch {
     return 'auto';
   }
-}
-
-// "**bold**" -> <strong>; lines starting with "- " or "* " become bullets,
-// "1. " keeps its number, each on its own line.
-// The AI marks each fact with its source number ("... today [1]."); here the
-// source is shown once under the answer instead ("From: Masjid records"), so
-// the numbers are left out of the text.
-function formatAnswer(text: string): ReactNode[] {
-  return text.replace(/\s*(\[\d+\]|【\d+】)/g, '').split('\n').map((raw, i) => {
-    const bullet = /^\s*[-*]\s+/.test(raw);
-    const line = bullet ? raw.replace(/^\s*[-*]\s+/, '') : raw;
-    const parts = line.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
-      part.startsWith('**') && part.endsWith('**') ? <strong key={j}>{part.slice(2, -2)}</strong> : part
-    );
-    return (
-      <div key={i} className={bullet ? 'assistant-line assistant-bullet' : /^\s*\d+\.\s/.test(line) ? 'assistant-line assistant-list-line' : 'assistant-line'}>
-        {parts.length && line.trim() ? parts : ' '}
-      </div>
-    );
-  });
 }
 
 // "masjid API: GET /ai/duty-on-date?date=..." means nothing to a member: the
@@ -408,8 +390,8 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
               <span className="assistant-avatar">
                 <AssistantIcon size={30} />
               </span>
-              <div className="assistant-bubble is-assistant">
-                {m.error ? <Alert type="warning" showIcon message={m.text} /> : formatAnswer(m.text)}
+              <div className={`assistant-bubble is-assistant${!m.error && isWideAnswer(m.text) ? ' is-wide' : ''}`}>
+                {m.error ? <Alert type="warning" showIcon message={m.text} /> : <AssistantAnswer text={m.text} />}
                 {m.sources && m.sources.length > 0 && (
                   <div className="assistant-sources">
                     <span className="assistant-sources-label">From:</span>

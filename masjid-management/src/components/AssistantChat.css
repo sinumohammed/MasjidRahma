@@ -735,3 +735,89 @@
     transition: none;
   }
 }
+
+/* Tables and charts in answers (AssistantAnswer.tsx): the bubble takes the
+   full width, the table scrolls sideways inside it on a phone. */
+.assistant-bubble.is-wide {
+  max-width: 100%;
+  flex: 1 1 auto;
+}
+
+.assistant-table-wrap {
+  margin: 8px 0;
+  overflow-x: auto;
+  border: 1px solid var(--a-border);
+  border-radius: 12px;
+}
+
+.assistant-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: normal;
+}
+
+.assistant-table th,
+.assistant-table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Names and months wrap; amounts never do, so on a phone every column stays
+   in view and a number is never broken across lines. */
+.assistant-table td:not(.is-num) {
+  overflow-wrap: break-word;
+  min-width: 72px;
+}
+
+.assistant-table th {
+  background: rgba(13, 148, 136, 0.08);
+  color: var(--a-primary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.assistant-table td {
+  border-top: 1px solid var(--a-border);
+}
+
+.assistant-table tbody tr:nth-child(even) td {
+  background: rgba(127, 127, 127, 0.04);
+}
+
+.assistant-table .is-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  /* A wide answer gets the avatar's room too. */
+  .assistant-row.is-assistant:has(.assistant-bubble.is-wide) .assistant-avatar {
+    display: none;
+  }
+  .assistant-table {
+    font-size: 13px;
+  }
+}
+
+.assistant-table tr.is-total td {
+  font-weight: 600;
+  border-top: 2px solid var(--a-primary);
+}
+
+.assistant-chart {
+  margin: 8px 0;
+  padding: 10px 6px 6px;
+  border: 1px solid var(--a-border);
+  border-radius: 12px;
+}
+
+.assistant-chart figcaption {
+  padding: 0 8px 6px;
+  font-size: 13px;
+  font-weight: 600;
+}

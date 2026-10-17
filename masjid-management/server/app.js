@@ -3361,7 +3361,8 @@ app.post('/api/assistant/ask', optionalAuth, async (req, res) => {
     const aiRes = await fetch(AI_ASK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_ASK_KEY}` },
-      body: JSON.stringify({ question, conversationId: conversationFor(req, chatId), ...mode, user: { token: aiUserToken(req.user), ref: aiUserRef(req) } }),
+      // display: the chat shows Markdown tables and draws ```chart blocks (AssistantChat.tsx).
+      body: JSON.stringify({ question, conversationId: conversationFor(req, chatId), ...mode, user: { token: aiUserToken(req.user), ref: aiUserRef(req) }, display: { tables: true, charts: true } }),
       // The AI may wait for this server's own /api/ai/* calls (a cold start of this server).
       signal: AbortSignal.timeout(120000),
     });
