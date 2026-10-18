@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import AnswerActions from './AnswerActions';
 import { Input, Button, Alert, Tag, Popconfirm, Select, Switch, Tooltip, ConfigProvider, message } from 'antd';
 import {
   SendOutlined,
@@ -187,6 +188,27 @@ const ADMIN_SUGGESTIONS: Suggestion[] = [
 const CHAT_THEME = {};
 
 // `embedded`: inside the floating chat's drawer; `onClose` closes it.
+// One answer: the text, its sources, and copy / image / print (AnswerActions).
+function AnswerBubble({ m }: { m: ChatMessage }) {
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={ref} className={`assistant-bubble is-assistant${!m.error && isWideAnswer(m.text) ? ' is-wide' : ''}`}>
+      {m.error ? <Alert type="warning" showIcon message={m.text} /> : <AssistantAnswer text={m.text} />}
+      {m.sources && m.sources.length > 0 && (
+        <div className="assistant-sources">
+          <span className="assistant-sources-label">From:</span>
+          {[...new Set(m.sources.map(sourceLabel))].map((label) => (
+            <Tag key={label} className="assistant-source" bordered={false}>
+              {label}
+            </Tag>
+          ))}
+        </div>
+      )}
+      {!m.error && <AnswerActions text={m.text} target={ref} />}
+    </div>
+  );
+}
+
 export default function AssistantChat({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void }) {
   const { isAdmin, isLoggedIn, username } = useAuth();
   const account = isLoggedIn ? username : null;
@@ -391,19 +413,7 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
               <span className="assistant-avatar">
                 <AssistantIcon size={30} />
               </span>
-              <div className={`assistant-bubble is-assistant${!m.error && isWideAnswer(m.text) ? ' is-wide' : ''}`}>
-                {m.error ? <Alert type="warning" showIcon message={m.text} /> : <AssistantAnswer text={m.text} />}
-                {m.sources && m.sources.length > 0 && (
-                  <div className="assistant-sources">
-                    <span className="assistant-sources-label">From:</span>
-                    {[...new Set(m.sources.map(sourceLabel))].map((label) => (
-                      <Tag key={label} className="assistant-source" bordered={false}>
-                        {label}
-                      </Tag>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <AnswerBubble m={m} />
             </div>
           )
         )}

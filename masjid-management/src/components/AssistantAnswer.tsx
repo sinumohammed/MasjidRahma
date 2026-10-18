@@ -7,6 +7,7 @@ import { ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cel
 //   - text lines: "**bold**", bullets ("- " / "* "), numbered lines
 //   - Markdown tables: "| Name | Due (₹) |" lines, shown as a real table
 //   - a ```chart block with JSON { type: bar|pie|line, title, unit?, data: [{ label, value }] },
+//     or several series: { series: ["Income", "Expense"], data: [{ label, Income, Expense }] },
 //     drawn here; the same figures are in a table next to it
 // The AI marks each fact with its source number ("... today [1]."); the source
 // is shown once under the answer instead ("From: Masjid records"), so the
@@ -53,7 +54,9 @@ function AnswerTable({ header, rows }: { header: string[]; rows: string[][] }) {
 // recharts would replay it from empty each time.
 function AnswerChart({ chart }: { chart: ChartSpec }) {
   const fmt = (v: number) => `${chart.unit === '₹' ? '₹' : ''}${v.toLocaleString('en-IN')}${chart.unit && chart.unit !== '₹' ? ` ${chart.unit}` : ''}`;
-  const height = chart.type === 'pie' ? 260 : Math.min(320, 140 + chart.data.length * 14);
+  const several = chart.series.length > 1;
+  const height = chart.type === 'pie' ? 260 : chart.type === 'line' ? 240 : Math.min(360, 140 + chart.data.length * (several ? 10 + 14 * chart.series.length : 14));
+  const legend = several ? <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} /> : null;
   return (
     <figure className="assistant-chart">
       {chart.title && <figcaption>{chart.title}</figcaption>}
@@ -74,7 +77,10 @@ function AnswerChart({ chart }: { chart: ChartSpec }) {
             <XAxis dataKey="label" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} width={56} tickFormatter={(v) => Number(v).toLocaleString('en-IN')} />
             <Tooltip formatter={(v) => fmt(Number(v))} />
-            <Line isAnimationActive={false} type="monotone" dataKey="value" stroke={CHART_COLORS[0]} strokeWidth={2.5} dot={{ r: 3 }} />
+            {legend}
+            {chart.series.map((n, i) => (
+              <Line key={n} isAnimationActive={false} type="monotone" dataKey={n} name={n} stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2.5} dot={{ r: 3 }} />
+            ))}
           </LineChart>
         ) : (
           <BarChart data={chart.data} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -82,7 +88,10 @@ function AnswerChart({ chart }: { chart: ChartSpec }) {
             <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => Number(v).toLocaleString('en-IN')} />
             <YAxis type="category" dataKey="label" width={110} tick={{ fontSize: 11 }} />
             <Tooltip formatter={(v) => fmt(Number(v))} cursor={{ fill: 'rgba(15, 107, 82, 0.08)' }} />
-            <Bar isAnimationActive={false} dataKey="value" fill={CHART_COLORS[0]} radius={[0, 6, 6, 0]} barSize={16} />
+            {legend}
+            {chart.series.map((n, i) => (
+              <Bar key={n} isAnimationActive={false} dataKey={n} name={n} fill={CHART_COLORS[i % CHART_COLORS.length]} radius={[0, 6, 6, 0]} barSize={several ? 10 : 16} />
+            ))}
           </BarChart>
         )}
       </ResponsiveContainer>

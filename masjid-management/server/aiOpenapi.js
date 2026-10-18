@@ -97,6 +97,16 @@ export const AI_OPENAPI = {
         ],
       },
     },
+    '/ai/finance-by-month': {
+      get: {
+        operationId: 'finance_by_month',
+        summary: 'Income, expense and net for each month of a period (admin only) - for trends, "month by month", charts over time, income vs expense per month. For "this year" or "last year" give that calendar year\'s first and last day; without dates: the last 12 months. At most 24 months',
+        parameters: [
+          { name: 'startDate', in: 'query', required: false, description: 'First day YYYY-MM-DD (default: the first day of the month 11 months ago)', schema: date() },
+          { name: 'endDate', in: 'query', required: false, description: 'Last day YYYY-MM-DD (default: the end of this month)', schema: date() },
+        ],
+      },
+    },
     '/ai/transactions': {
       get: {
         operationId: 'transactions',

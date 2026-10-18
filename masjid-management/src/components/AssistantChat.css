@@ -820,3 +820,76 @@
   font-size: 13px;
   font-weight: 600;
 }
+
+/* Copy / image / print under an answer (AnswerActions.tsx). */
+.assistant-answer-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  margin-left: -6px;
+}
+.assistant-answer-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--a-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.assistant-answer-actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--a-primary) 10%, transparent);
+  color: var(--a-primary);
+}
+.assistant-answer-actions button:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* Printing one answer (AnswerActions.tsx): a copy of it sits in
+   .m-print-holder under <body>; everything else is left out of the print. */
+.m-print-holder {
+  display: none;
+}
+@media print {
+  html:has(body.m-print-answer),
+  body.m-print-answer {
+    background: #fff !important;
+    color-scheme: light;
+  }
+  body.m-print-answer > *:not(.m-print-holder) {
+    display: none !important;
+  }
+  body.m-print-answer > .m-print-holder {
+    display: block;
+    position: static;
+    height: auto;
+    min-height: 0;
+    max-width: 720px;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+    overflow: visible;
+    background: #fff;
+  }
+  /* TransactionReceipt.css hides "body *" for every print; not
+     !important, so the chart's own hidden parts (inline) stay hidden. */
+  .m-print-holder,
+  .m-print-holder * {
+    visibility: visible;
+  }
+  .m-print-holder .assistant-bubble {
+    max-width: none;
+    box-shadow: none;
+    background: #fff;
+    color: #000;
+  }
+  .m-print-holder .assistant-answer-actions,
+  .m-print-holder .recharts-tooltip-wrapper {
+    display: none !important;
+  }
+}

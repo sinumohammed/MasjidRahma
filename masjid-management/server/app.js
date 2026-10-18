@@ -3366,6 +3366,52 @@ aiGet('/finance-summary', async (req) => {
   });
 });
 
+// Income and expense month by month - "last year's income as a line chart",
+// "income vs expense by month". /finance-summary gives one total for the
+// whole range, so a chart over time had no points to draw (found by the
+// user). Opening balances - money carried over when the books started,
+// recorded as income - are left out and named, as on the dashboard.
+// Default: the last 12 months, this one included; at most 24 months.
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MAX_FINANCE_MONTHS = 24;
+aiGet('/finance-by-month', async (req) => {
+  adminOnly(req, "the masjid's accounts");
+  for (const key of ['startDate', 'endDate']) {
+    if (req.query[key] !== undefined && !isDateStr(req.query[key])) throw badRequest(`${key} must be YYYY-MM-DD`);
+  }
+  const today = getMasjidTodayParts();
+  const day = (y, m, d) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
+  const start = req.query.startDate ?? day(today.year, today.monthIndex - 11, 1);
+  const end = req.query.endDate ?? day(today.year, today.monthIndex + 1, 0);
+  if (start > end) throw badRequest('startDate must be on or before endDate');
+  const months = [];
+  for (let y = Number(start.slice(0, 4)), m = Number(start.slice(5, 7)) - 1; `${y}-${String(m + 1).padStart(2, '0')}` <= end.slice(0, 7); m === 11 ? (y++, (m = 0)) : m++) {
+    months.push({ month: `${y}-${String(m + 1).padStart(2, '0')}`, label: `${MONTH_NAMES[m]} ${y}`, income: 0, expense: 0 });
+  }
+  if (months.length > MAX_FINANCE_MONTHS) throw badRequest(`at most ${MAX_FINANCE_MONTHS} months at a time`);
+  const rows = await dbAll(
+    `SELECT to_char(date::date, 'YYYY-MM') AS month, type, (TRIM(category) ~* '^opening balance$') AS opening, SUM(amount) AS total
+     FROM transactions WHERE date::date BETWEEN $1::date AND $2::date GROUP BY 1, 2, 3`,
+    [start, end]
+  );
+  let openingLeftOut = 0;
+  for (const r of rows) {
+    if (r.opening) {
+      openingLeftOut += Number(r.total);
+      continue;
+    }
+    const m = months.find((x) => x.month === r.month);
+    if (m && (r.type === 'income' || r.type === 'expense')) m[r.type] += Number(r.total);
+  }
+  const sum = (k) => months.reduce((t, m) => t + m[k], 0);
+  return inRupees({
+    period: { from: start, to: end },
+    months: months.map((m) => ({ ...m, net: m.income - m.expense })),
+    totals: { income: sum('income'), expense: sum('expense'), net: sum('income') - sum('expense') },
+    ...(openingLeftOut ? { openingBalancesLeftOut: openingLeftOut, note: 'Opening balances (money carried over when the books started) are not counted as income here' } : {}),
+  });
+});
+
 aiGet('/transactions', async (req) => {
   const { clause, params } = aiDateRange(req);
   const where = [clause.replace(/^WHERE /, '').replace(/\bdate::date\b/g, 't.date::date')].filter(Boolean);
