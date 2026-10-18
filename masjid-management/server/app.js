@@ -3412,6 +3412,49 @@ aiGet('/finance-by-month', async (req) => {
   });
 });
 
+// Income and expense day by day - "the last 30 days as a line chart" (the
+// admin's ready question). Like /finance-by-month: opening balances left out
+// and named, days with nothing are 0. Default: the last 30 days, today
+// included; at most 92 days.
+const MAX_FINANCE_DAYS = 92;
+aiGet('/finance-by-day', async (req) => {
+  adminOnly(req, "the masjid's accounts");
+  for (const key of ['startDate', 'endDate']) {
+    if (req.query[key] !== undefined && !isDateStr(req.query[key])) throw badRequest(`${key} must be YYYY-MM-DD`);
+  }
+  const DAY_MS = 86400000;
+  const end = req.query.endDate ?? todayInMasjidTimezone();
+  const start = req.query.startDate ?? new Date(Date.parse(end) - 29 * DAY_MS).toISOString().slice(0, 10);
+  if (start > end) throw badRequest('startDate must be on or before endDate');
+  const count = Math.round((Date.parse(end) - Date.parse(start)) / DAY_MS) + 1;
+  if (count > MAX_FINANCE_DAYS) throw badRequest(`at most ${MAX_FINANCE_DAYS} days at a time`);
+  const days = Array.from({ length: count }, (_, i) => {
+    const d = new Date(Date.parse(start) + i * DAY_MS);
+    return { date: d.toISOString().slice(0, 10), label: `${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]}`, income: 0, expense: 0 };
+  });
+  const rows = await dbAll(
+    `SELECT to_char(date::date, 'YYYY-MM-DD') AS day, type, (TRIM(category) ~* '^opening balance$') AS opening, SUM(amount) AS total
+     FROM transactions WHERE date::date BETWEEN $1::date AND $2::date GROUP BY 1, 2, 3`,
+    [start, end]
+  );
+  let openingLeftOut = 0;
+  for (const r of rows) {
+    if (r.opening) {
+      openingLeftOut += Number(r.total);
+      continue;
+    }
+    const d = days.find((x) => x.date === r.day);
+    if (d && (r.type === 'income' || r.type === 'expense')) d[r.type] += Number(r.total);
+  }
+  const sum = (k) => days.reduce((t, d) => t + d[k], 0);
+  return inRupees({
+    period: { from: start, to: end },
+    days: days.map((d) => ({ ...d, net: d.income - d.expense })),
+    totals: { income: sum('income'), expense: sum('expense'), net: sum('income') - sum('expense') },
+    ...(openingLeftOut ? { openingBalancesLeftOut: openingLeftOut, note: 'Opening balances (money carried over when the books started) are not counted as income here' } : {}),
+  });
+});
+
 aiGet('/transactions', async (req) => {
   const { clause, params } = aiDateRange(req);
   const where = [clause.replace(/^WHERE /, '').replace(/\bdate::date\b/g, 't.date::date')].filter(Boolean);

@@ -16,6 +16,7 @@ import {
   CreditCardOutlined,
   NotificationOutlined,
   BarChartOutlined,
+  LineChartOutlined,
   PieChartOutlined,
   TeamOutlined,
   BankOutlined,
@@ -179,6 +180,8 @@ const ADMIN_SUGGESTIONS: Suggestion[] = [
   { icon: <TeamOutlined />, tone: 'rose', label: 'ബാക്കിയുള്ള അംഗങ്ങൾ', question: 'വരിസംഖ്യ അടയ്ക്കാൻ ബാക്കിയുള്ള അംഗങ്ങൾ ആരൊക്കെ, എത്ര വീതം?' },
   { icon: <FileSearchOutlined />, tone: 'violet', label: 'കഴിഞ്ഞ വർഷത്തെ ബാക്കി', question: 'കഴിഞ്ഞ വർഷത്തെ വരിസംഖ്യ ബാക്കിയുള്ളവർ ആരൊക്കെ?' },
   { icon: <BankOutlined />, tone: 'sky', label: 'ബാങ്ക് ബാലൻസ്', question: 'ബാങ്ക് അക്കൗണ്ടുകളിലെ ഇപ്പോഴത്തെ ബാലൻസ് എത്ര?' },
+  { icon: <LineChartOutlined />, tone: 'teal', label: 'കഴിഞ്ഞ 30 ദിവസം', question: 'കഴിഞ്ഞ 30 ദിവസത്തെ വരവും ചെലവും ദിവസം തിരിച്ച് ലൈൻ ചാർട്ടായി കാണിക്കൂ' },
+  { icon: <LineChartOutlined />, tone: 'amber', label: 'ഈ വർഷത്തെ വരവ്-ചെലവ്', question: 'ഈ വർഷത്തെ വരവും ചെലവും മാസം തിരിച്ച് ലൈൻ ചാർട്ടായി കാണിക്കൂ' },
   TODAY_DUTY,
 ];
 

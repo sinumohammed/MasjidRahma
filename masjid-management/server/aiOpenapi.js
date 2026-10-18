@@ -90,7 +90,7 @@ export const AI_OPENAPI = {
     '/ai/finance-summary': {
       get: {
         operationId: 'finance_summary',
-        summary: 'Total income, expense and balance for a date range, totals per category, and current bank account balances (admin only)',
+        summary: 'Total income, expense and balance for a date range, what it was spent on or received for (totals per category), and current bank account balances (admin only) - for "how much was spent this month, on what"',
         parameters: [
           { name: 'startDate', in: 'query', required: false, description: 'First day YYYY-MM-DD (default: all time)', schema: date() },
           { name: 'endDate', in: 'query', required: false, description: 'Last day YYYY-MM-DD (default: all time)', schema: date() },
@@ -100,10 +100,20 @@ export const AI_OPENAPI = {
     '/ai/finance-by-month': {
       get: {
         operationId: 'finance_by_month',
-        summary: 'Income, expense and net for each month of a period (admin only) - for trends, "month by month", charts over time, income vs expense per month. For "this year" or "last year" give that calendar year\'s first and last day; without dates: the last 12 months. At most 24 months',
+        summary: 'Income, expense and net for each month of a period (admin only) - for trends, "month by month", charts over time, income vs expense per month. Totals only, no categories (those are in finance_summary). For "this year" or "last year" give that calendar year\'s first and last day; without dates: the last 12 months. At most 24 months',
         parameters: [
           { name: 'startDate', in: 'query', required: false, description: 'First day YYYY-MM-DD (default: the first day of the month 11 months ago)', schema: date() },
           { name: 'endDate', in: 'query', required: false, description: 'Last day YYYY-MM-DD (default: the end of this month)', schema: date() },
+        ],
+      },
+    },
+    '/ai/finance-by-day': {
+      get: {
+        operationId: 'finance_by_day',
+        summary: 'Income, expense and net for each day of a period (admin only) - for "the last 30 days", "day by day", daily charts. Totals only, no categories (those are in finance_summary). Default: the last 30 days; at most 92',
+        parameters: [
+          { name: 'startDate', in: 'query', required: false, description: 'First day YYYY-MM-DD (default: 29 days before endDate)', schema: date() },
+          { name: 'endDate', in: 'query', required: false, description: 'Last day YYYY-MM-DD (default: today)', schema: date() },
         ],
       },
     },
