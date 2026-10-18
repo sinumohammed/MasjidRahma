@@ -3528,9 +3528,13 @@ app.use('/api/ai', ai);
 // above), so the AI service reads /api/ai/* as that user. Each user's
 // conversation is kept apart on the AI side ("u-<user id>-<chat>").
 // Unset AI_ASK_URL or AI_ASK_KEY: 503, and the app hides the chat.
-// Not logged in: a guest - asked only about the app's data (agent
-// connected_apps, so the chat is not a general chatbot for anyone), only the
-// duty schedule (AI_GUEST_PATHS).
+// Everyone - guest, member, admin - is asked only about the app's data (agent
+// connected_apps): the assistant is the masjid's, not a general chatbot, so
+// no company handbook, coding or general answers (the user's decision,
+// 2026-10-19; before, a logged-in user got the AI service's full agent and a
+// member's "what is our rollback process?" was answered from its handbook).
+// What each one sees is still their role's: a guest only the duty schedule
+// (AI_GUEST_PATHS).
 // Every question spends the AI service's free quota, so each user has a
 // daily limit (the masjid's day): members 4, visitors 4 per IP address, the
 // admin no limit (0). The admin changes them on the Settings page (stored in
@@ -3706,7 +3710,7 @@ async function askAssistant({ user, usage, question, conversationId, ref, displa
       body: { error: `You have used today's ${usage.limit} questions - ${user ? 'more tomorrow' : 'log in, or ask again tomorrow'}`, limit: usage.limit, remaining: 0 },
     };
   }
-  const mode = user ? { mode: 'single' } : { mode: 'multi', agent: 'connected_apps' };
+  const mode = { mode: 'multi', agent: 'connected_apps' };
   const giveBack = async (status, body) => {
     await giveQuestionBack(usage).catch(() => {});
     return { status, body: { ...body, ...remainingOf(usage, used - 1) } };

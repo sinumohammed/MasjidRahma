@@ -54,6 +54,32 @@ interface ChatMessage {
   text: string;
   sources?: AssistantSource[];
   error?: boolean;
+  // When it was sent or answered (ms); messages kept from before have none.
+  at?: number;
+}
+
+// Under each message: the time today, "Yesterday 6:32 PM", else the date;
+// the full date and time on hover or tap. In the device's language and clock.
+const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+const dateFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+const dateYearFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const fullFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' });
+const dayStart = (t: number) => new Date(t).setHours(0, 0, 0, 0);
+function messageTime(at: number): string {
+  const days = Math.round((dayStart(Date.now()) - dayStart(at)) / 86400000);
+  if (days === 0) return timeFmt.format(at);
+  if (days === 1) return `Yesterday ${timeFmt.format(at)}`;
+  const day = new Date(at).getFullYear() === new Date().getFullYear() ? dateFmt.format(at) : dateYearFmt.format(at);
+  return `${day}, ${timeFmt.format(at)}`;
+}
+function MessageTime({ at }: { at?: number }) {
+  const [full, setFull] = useState(false);
+  if (!at) return null;
+  return (
+    <time className="assistant-time" dateTime={new Date(at).toISOString()} title={fullFmt.format(at)} onClick={() => setFull((f) => !f)}>
+      {full ? fullFmt.format(at) : messageTime(at)}
+    </time>
+  );
 }
 
 const MAX_KEPT = 40;
@@ -207,7 +233,10 @@ function AnswerBubble({ m }: { m: ChatMessage }) {
           ))}
         </div>
       )}
-      {!m.error && <AnswerActions text={m.text} target={ref} />}
+      <div className="assistant-answer-foot">
+        {!m.error && <AnswerActions text={m.text} target={ref} />}
+        <MessageTime at={m.at} />
+      </div>
     </div>
   );
 }
@@ -277,15 +306,15 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
     const q = question.trim();
     if (!q || asking || noneLeft) return;
     setDraft('');
-    setMessages((m) => [...m, { role: 'user', text: q }]);
+    setMessages((m) => [...m, { role: 'user', text: q, at: Date.now() }]);
     setRecent((r) => rememberQuestion(account, r, q));
     setAsking(true);
     try {
       const { answer, sources, limit, remaining } = await askAssistant(q, chatId);
-      setMessages((m) => [...m, { role: 'assistant', text: answer, sources }]);
+      setMessages((m) => [...m, { role: 'assistant', text: answer, sources, at: Date.now() }]);
       setQuota({ limit, remaining });
     } catch (err) {
-      setMessages((m) => [...m, { role: 'assistant', text: err instanceof Error ? err.message : 'The assistant could not answer', error: true }]);
+      setMessages((m) => [...m, { role: 'assistant', text: err instanceof Error ? err.message : 'The assistant could not answer', error: true, at: Date.now() }]);
       if (err instanceof AssistantError && err.quota) setQuota(err.quota);
     } finally {
       setAsking(false);
@@ -409,7 +438,10 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
         {messages.map((m, i) =>
           m.role === 'user' ? (
             <div key={i} className="assistant-row is-user">
-              <div className="assistant-bubble is-user">{m.text}</div>
+              <div className="assistant-bubble is-user">
+                {m.text}
+                <MessageTime at={m.at} />
+              </div>
             </div>
           ) : (
             <div key={i} className="assistant-row is-assistant">

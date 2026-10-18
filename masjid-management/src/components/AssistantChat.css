@@ -821,6 +821,31 @@
   font-weight: 600;
 }
 
+/* Under an answer: its buttons on the left, its time on the right. */
+.assistant-answer-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.assistant-answer-foot .assistant-time {
+  margin-left: auto;
+}
+/* A message's time (MessageTime): small, muted; tap for the full date. */
+.assistant-time {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--a-muted);
+  text-align: right;
+  cursor: pointer;
+  user-select: none;
+}
+.assistant-bubble.is-user .assistant-time {
+  color: inherit;
+  opacity: 0.75;
+}
+
 /* Copy / image / print under an answer (AnswerActions.tsx). */
 .assistant-answer-actions {
   display: flex;
