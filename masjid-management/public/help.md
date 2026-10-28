@@ -11,7 +11,7 @@ You stay logged in for 30 days.
 To log out, tap your photo at the top right > Logout.
 
 ## Forgot your password
-If you never changed it, your password is the phone number on your member record. If you changed it and forgot it, ask the masjid admin.
+If you never changed it, your password is the phone number on your member record. If you changed it and forgot it, ask the masjid admin to reset it: then your phone number is your password again, and you can set a new one in Settings > Change password.
 
 ## The first admin account
 On a new app with no admin yet, the button at the top says Set Up Admin Account. The first account made there is the admin that manages the masjid.
@@ -68,6 +68,7 @@ The app gives the member a Member ID (MR#...). The member logs in with that ID a
 Roles: admin
 Members > the edit button next to the member. Change any detail and save. Change photo / Remove photo sets the picture shown for the member.
 Changing the phone number also changes a member's login password, unless they set their own password.
+Reset password (under the photo, then Reset) is for a member who forgot their own password: they log in with the phone number on their record again. The member needs a phone number on their record.
 Dues Start Month (monthly) or Dues Start Year (yearly): if a member only started paying from a later month or year, set it here so the earlier months show as Nil instead of Missed. Leave it blank to count every year from January.
 
 # Dues and the profile

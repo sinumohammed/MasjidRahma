@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
-import { Form, Input, InputNumber, Select, Button, Switch, Space, DatePicker, message } from 'antd';
+import { Form, Input, InputNumber, Select, Button, Switch, Space, DatePicker, Popconfirm, message } from 'antd';
 import dayjs from 'dayjs';
-import { CameraOutlined } from '@ant-design/icons';
-import { createMember, updateMember, setMemberPhoto, MEMBER_PHOTO_EVENT, type Member } from '../../services/api';
+import { CameraOutlined, KeyOutlined } from '@ant-design/icons';
+import { createMember, updateMember, setMemberPhoto, resetMemberPassword, MEMBER_PHOTO_EVENT, type Member } from '../../services/api';
 import { resizePhoto } from '../About/resizePhoto';
 import MemberAvatar from './MemberAvatar';
 import './MemberForm.css';
@@ -34,6 +34,21 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
       message.error(err instanceof Error ? err.message : 'Failed to save the photo');
     } finally {
       setPhotoBusy(false);
+    }
+  };
+
+  // A member who forgot their password logs in with their phone number again.
+  const [resetting, setResetting] = useState(false);
+  const resetPassword = async () => {
+    if (!member) return;
+    setResetting(true);
+    try {
+      await resetMemberPassword(member.id);
+      message.success('Password reset - they log in with their phone number now');
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Failed to reset the password');
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -117,6 +132,17 @@ export default function MemberForm({ member, onSuccess, onCancel }: MemberFormPr
             <Button type="text" danger size="small" onClick={() => savePhoto(null)} disabled={photoBusy}>
               Remove photo
             </Button>
+            <Popconfirm
+              title="Reset this member's password?"
+              description="They log in with the phone number on their record again."
+              onConfirm={resetPassword}
+              okText="Reset"
+              cancelText="Cancel"
+            >
+              <Button type="text" size="small" icon={<KeyOutlined />} loading={resetting}>
+                Reset password
+              </Button>
+            </Popconfirm>
           </Space>
           <input
             ref={photoInput}

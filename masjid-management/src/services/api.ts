@@ -1020,6 +1020,14 @@ export const memberPhotoUrl = (uniqueId: string, version = 0) =>
 // A new photo shows at once in every avatar of that member on this screen.
 export const MEMBER_PHOTO_EVENT = 'member-photo-updated';
 
+// The member logs in with their phone number again (they forgot their own password).
+export const resetMemberPassword = (id: string) =>
+  aboutRequest<{ reset: boolean }>(
+    `/members/${encodeURIComponent(id)}/reset-password`,
+    { method: 'POST', headers: authHeaders() },
+    'Failed to reset the password'
+  );
+
 export const setMemberPhoto = (id: string, photo: string | null) =>
   aboutRequest<{ uniqueId: string; hasPhoto: boolean }>(
     `/members/${encodeURIComponent(id)}/photo`,

@@ -2203,6 +2203,22 @@ app.put('/api/members/:id/photo', requireAdmin, async (req, res) => {
   }
 });
 
+// A member who forgot their own password: drop it, so they log in with the
+// phone number on their record again (see /api/auth/login).
+app.post('/api/members/:id/reset-password', requireAdmin, async (req, res) => {
+  try {
+    const member = await dbGet('SELECT id, phone FROM members WHERE id = $1', [req.params.id]);
+    if (!member) return res.status(404).json({ error: 'no such member' });
+    if (!member.phone || member.phone.trim() === '') {
+      return res.status(400).json({ error: 'This member has no phone number - add one first, it becomes their password' });
+    }
+    await dbRun('UPDATE users SET password_hash = NULL WHERE member_id = $1 AND is_admin = false', [member.id]);
+    res.json({ reset: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.put('/api/members/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
