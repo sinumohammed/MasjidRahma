@@ -795,12 +795,16 @@ export interface AssistantQuota {
 export interface AssistantAnswer extends AssistantQuota {
   answer: string;
   sources: AssistantSource[];
+  // offer: nothing in the masjid records answered it - the chat offers "Ask a person".
+  handover?: { offer: boolean; reason?: string };
 }
 
 export interface AssistantStatus extends Partial<AssistantQuota> {
   available: boolean;
   // Which login the chat answers for.
   askingAs?: { role: 'admin' | 'member' | 'guest'; username?: string };
+  // A login only: who answers "Ask a person", and their unread replies (null: not known now).
+  handover?: { person: string; newReplies: number | null } | null;
 }
 
 // An assistant error that still says how many questions are left.
@@ -857,6 +861,42 @@ export const clearAssistantChat = async (chatId: string): Promise<void> => {
     throw new Error(result.error || 'Failed to clear the chat');
   }
 };
+
+// "Ask a person" (server: /api/assistant/handover*): a question the assistant
+// could not answer, sent to a person, and their replies. Logged-in users only.
+export interface HandoverMessage {
+  id: number;
+  at: string;
+  from: 'user' | 'owner';
+  text: string;
+}
+export interface HandoverTicket {
+  id: number;
+  question: string;
+  status: 'open' | 'answered' | 'closed';
+  createdAt: string;
+  updatedAt: string;
+  newReplies: number;
+  messages: HandoverMessage[];
+}
+
+async function handoverCall<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await apiFetch(`${API_BASE_URL}/assistant${path}`, {
+    ...init,
+    headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...authHeaders() },
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Could not reach a person just now - please try again');
+  return result as T;
+}
+
+// question: left out, the chat's last question is sent. note: anything the user adds.
+export const askPerson = (chatId: string, opts: { question?: string; note?: string; reason?: string } = {}) =>
+  handoverCall<HandoverTicket>('/handover', { method: 'POST', body: JSON.stringify({ chatId, ...opts }) });
+export const getHandovers = () => handoverCall<{ tickets: HandoverTicket[]; newReplies: number }>('/handovers');
+export const writeToPerson = (id: number, text: string) =>
+  handoverCall<HandoverTicket>(`/handovers/${id}/messages`, { method: 'POST', body: JSON.stringify({ text }) });
+export const markHandoverSeen = (id: number) => handoverCall<{ ok: boolean }>(`/handovers/${id}/seen`, { method: 'POST', body: '{}' });
 
 // Assistant settings (admin): questions per day for members, visitors (per
 // IP address) and the admin - 0 means no limit. Stored on the server, used at once.

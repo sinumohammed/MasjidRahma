@@ -12,6 +12,8 @@
 //     account itself (we check contact.user_id), matched to members.phone,
 //     the number members already log in with. Not for the admin (no member).
 // Voice notes are turned into text (transcribeAudio), shown back, then asked.
+// "Ask a person" (handover.js): a linked login sends /person after an answer
+// that did not help, and the person's reply comes back here (notifyUser).
 // Only private chats are answered: in a group, everyone would see the answer.
 //
 // Set up: TELEGRAM_BOT_TOKEN (from @BotFather), then the admin presses
@@ -125,11 +127,13 @@ const HELP = [
   '/whoami - who you are asking as',
   '/new - start a new conversation',
   '/voice - the language of your voice notes',
+  '/person - send your last question to a person (Sino), who replies here',
+  '/reply - write to the person about your last request',
   '/unlink - stop asking as your masjid login',
 ].join('\n');
 
 export function telegramRouter(deps) {
-  const { dbGet, dbAll, dbRun, requireAuth, requireAdmin, runInBackground, assistantAvailable, askAssistant, usageFor, usedToday, transcribeAudio, forgetConversation, aiUserRef, guestRef } = deps;
+  const { dbGet, dbAll, dbRun, requireAuth, requireAdmin, runInBackground, assistantAvailable, askAssistant, usageFor, usedToday, transcribeAudio, forgetConversation, aiUserRef, guestRef, handover, handoverPerson } = deps;
   const router = express.Router();
   const configured = () => Boolean(TOKEN) && assistantAvailable();
 
@@ -224,6 +228,8 @@ export function telegramRouter(deps) {
       await dbRun('DELETE FROM channel_links WHERE channel = $1 AND external_id = $2', [CHANNEL, telegramId]);
       return reply(chatId, user ? 'Unlinked. You are now a guest: only the food-duty schedule. /start to link again.' : 'This account was not linked.');
     }
+    if (cmd === 'person') return toPerson(chatId, telegramId, user, arg);
+    if (cmd === 'reply') return replyToPerson(chatId, user, arg);
     if (cmd === 'voice') {
       const language = VOICE_LANGUAGES.find((l) => l.toLowerCase() === arg.toLowerCase());
       if (!language) {
@@ -238,6 +244,53 @@ export function telegramRouter(deps) {
     }
     return reply(chatId, HELP);
   }
+
+  // /person [note]: the last question of this Telegram conversation to a person. Logins only -
+  // the reply has to find them again.
+  async function toPerson(chatId, telegramId, user, note) {
+    if (!user) return reply(chatId, 'Only members can send a question to a person - /start to link your phone number first.', { reply_markup: SHARE_PHONE_KEYBOARD });
+    if (note.length > 2000) return reply(chatId, 'Please write up to 2000 characters.');
+    const { status, body } = await handover.create(user, { conversationId: conversationOf(telegramId, user), note: note || undefined });
+    if (status === 400 && /question/i.test(body.error ?? '')) return reply(chatId, 'Ask your question first, then send /person to pass it to a person.');
+    if (status !== 200) return reply(chatId, body.error ?? 'Could not reach a person just now - please try again.');
+    return reply(chatId, `✅ Sent to ${handoverPerson}: “${body.question}”
+
+The reply will come here and in the masjid app's Assistant. To add something: /reply your message`);
+  }
+
+  // /reply <text>: to the person, on the newest request that is not closed.
+  async function replyToPerson(chatId, user, text) {
+    if (!user) return reply(chatId, 'Only members can write to a person - /start to link your phone number first.');
+    if (!text) return reply(chatId, 'Write your message after /reply, for example: /reply I found it, thank you');
+    if (text.length > 2000) return reply(chatId, 'Please write up to 2000 characters.');
+    const list = await handover.list(user);
+    if (list.status !== 200) return reply(chatId, list.body.error ?? 'Could not reach a person just now - please try again.');
+    const ticket = (list.body.tickets ?? []).find((t) => t.status !== 'closed') ?? list.body.tickets?.[0];
+    if (!ticket) return reply(chatId, `You have not asked ${handoverPerson} anything yet - ask your question, then send /person.`);
+    const { status, body } = await handover.addMessage(user, ticket.id, text);
+    if (status !== 200) return reply(chatId, body.error ?? 'Could not reach a person just now - please try again.');
+    return reply(chatId, `✅ Sent to ${handoverPerson}, about “${ticket.question}”.`);
+  }
+
+  // The person replied (handover.js): to every Telegram account linked to that login. The count sent.
+  router.notifyUser = async (userId, { question, text }) => {
+    if (!TOKEN) return 0;
+    const links = await dbAll('SELECT external_id FROM channel_links WHERE channel = $1 AND user_id = $2', [CHANNEL, userId]);
+    let sent = 0;
+    for (const l of links) {
+      try {
+        await reply(l.external_id, `💬 **${handoverPerson} replied**${question ? ` about “${question}”` : ''}:
+
+${text}
+
+To write back: /reply your message`);
+        sent++;
+      } catch (error) {
+        console.warn(`Telegram: could not pass a reply on to ${l.external_id}: ${error.message}`);
+      }
+    }
+    return sent;
+  };
 
   // A question (typed, or a voice note's text) to the assistant.
   async function ask(chatId, telegramId, question) {
@@ -261,7 +314,9 @@ export function telegramRouter(deps) {
       const sources = [...new Set((body.sources ?? []).map((s) => s.source).filter(Boolean))];
       // Said only when it is nearly used up.
       const left = body.limit && body.remaining <= 1 ? `\n\n(${body.remaining} of ${body.limit} questions left today)` : '';
-      await reply(chatId, `${body.answer}${sources.length ? `\n\nSource: ${sources.join(', ')}` : ''}${left}`.trim());
+      // Nothing in the masjid records for it: a linked login can pass it to a person.
+      const person = body.handover?.offer && user && handover ? `\n\nNot what you needed? Send /person and ${handoverPerson} will reply here.` : '';
+      await reply(chatId, `${body.answer}${sources.length ? `\n\nSource: ${sources.join(', ')}` : ''}${left}${person}`.trim());
     } finally {
       clearInterval(timer);
     }
@@ -393,6 +448,8 @@ export function telegramRouter(deps) {
           { command: 'whoami', description: 'Who you are asking as' },
           { command: 'new', description: 'Start a new conversation' },
           { command: 'voice', description: 'The language of your voice notes' },
+          { command: 'person', description: 'Send your last question to a person' },
+          { command: 'reply', description: 'Write to the person about your request' },
           { command: 'unlink', description: 'Stop asking as your masjid login' },
           { command: 'help', description: 'What I can do' },
         ],

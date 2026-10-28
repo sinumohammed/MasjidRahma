@@ -14,6 +14,7 @@ import { AI_OPENAPI } from './aiOpenapi.js';
 import { aiMcpHandler } from './aiMcp.js';
 import { findMembers, toLatin } from './nameMatch.js';
 import { telegramRouter } from './telegram.js';
+import { handoverApi, handoverRouter, HANDOVER_PERSON } from './handover.js';
 
 // Load server/.env by absolute path rather than relying on dotenv's default
 // (relative to process.cwd()) - the local/Render entry (server/index.js) and
@@ -3583,6 +3584,7 @@ const DEFAULT_DAILY_LIMIT = {
 const LIMIT_ROLES = ['member', 'guest', 'admin'];
 const MAX_DAILY_LIMIT = 100;
 const assistantAvailable = () => Boolean(AI_ASK_URL && AI_ASK_KEY && MASJID_AI_TOKEN);
+const handovers = handoverApi({ AI_ASK_URL, AI_ASK_KEY, dbGet });
 
 // The limits now: the admin's setting for a role, else its default.
 async function dailyLimits() {
@@ -3698,14 +3700,19 @@ const remainingOf = (usage, used) => (usage.limit ? { limit: usage.limit, remain
 
 // `askingAs`: which login the chat answers for - shown in the chat, so a
 // member's view ("only my dues") is never mistaken for the admin's.
+// `handover`: for a login, the person who answers "Ask a person" and how many of their replies
+// are unread (the badge on the Assistant); null when the AI service could not be asked.
 app.get('/api/assistant/status', optionalAuth, async (req, res) => {
   if (!assistantAvailable()) return res.json({ available: false });
   const usage = await usageFor(req);
   const askingAs = !req.user ? { role: 'guest' } : { role: req.user.isAdmin ? 'admin' : 'member', username: req.user.username };
+  const handover = req.user
+    ? await handovers.list(req.user).then(({ status, body }) => ({ person: HANDOVER_PERSON, newReplies: status === 200 ? body.newReplies ?? 0 : null }))
+    : null;
   try {
-    res.json({ available: true, askingAs, ...remainingOf(usage, await usedToday(usage)) });
+    res.json({ available: true, askingAs, handover, ...remainingOf(usage, await usedToday(usage)) });
   } catch {
-    res.json({ available: true, askingAs, limit: usage.limit, remaining: null });
+    res.json({ available: true, askingAs, handover, limit: usage.limit, remaining: null });
   }
 });
 
@@ -3741,7 +3748,8 @@ async function askAssistant({ user, usage, question, conversationId, ref, displa
     });
     const data = await aiRes.json().catch(() => ({}));
     if (!aiRes.ok) return giveBack(aiRes.status === 429 ? 429 : 502, { error: data.error ?? 'The assistant could not answer - please try again' });
-    return { status: 200, body: { answer: data.answer, sources: (data.sources ?? []).map((s) => ({ n: s.n, source: s.source, section: s.section })), ...remainingOf(usage, used) } };
+    // handover.offer: nothing in the records answered it - the chat offers "Ask a person" (handover.js).
+    return { status: 200, body: { answer: data.answer, sources: (data.sources ?? []).map((s) => ({ n: s.n, source: s.source, section: s.section })), handover: { offer: Boolean(data.handover?.offer), reason: data.handover?.reason }, ...remainingOf(usage, used) } };
   } catch (error) {
     return giveBack(502, { error: error.name === 'TimeoutError' ? 'The assistant took too long - please try again' : 'The assistant could not be reached' });
   }
@@ -3828,10 +3836,22 @@ app.delete('/api/assistant/chat/:chatId', optionalAuth, async (req, res) => {
 
 // The assistant as a Telegram bot (telegram.js): the same questions, roles
 // and daily limits as the chat above.
-app.use('/api/telegram', telegramRouter({
+const telegramBot = telegramRouter({
   dbGet, dbAll, dbRun, requireAuth, requireAdmin, runInBackground,
   assistantAvailable, askAssistant, usageFor, usedToday, transcribeAudio, forgetConversation, aiUserRef,
   guestRef: (key) => `guest:${crypto.createHmac('sha256', AI_USER_SECRET).update(key).digest('hex').slice(0, 10)}`,
+  handover: handovers, handoverPerson: HANDOVER_PERSON,
+});
+app.use('/api/telegram', telegramBot);
+
+// "Ask a person" (handover.js): the chat's tickets to a person, and the person's replies.
+app.use('/api/assistant', handoverRouter({
+  api: handovers,
+  requireAuth,
+  conversationFor,
+  chatIdPattern: CHAT_ID,
+  aiTokenMatches: (req) => Boolean(MASJID_AI_TOKEN) && crypto.timingSafeEqual(sha256(getBearerToken(req) ?? ''), sha256(MASJID_AI_TOKEN)),
+  notifyUser: telegramBot.notifyUser,
 }));
 
 app.get('/health', (req, res) => {

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import AnswerActions from './AnswerActions';
-import { Input, Button, Alert, Tag, Popconfirm, Select, Switch, Tooltip, ConfigProvider, message } from 'antd';
+import { Input, Button, Alert, Tag, Popconfirm, Select, Switch, Tooltip, ConfigProvider, Badge, message } from 'antd';
 import {
   SendOutlined,
   ClearOutlined,
@@ -20,7 +20,10 @@ import {
   PieChartOutlined,
   TeamOutlined,
   BankOutlined,
+  CustomerServiceOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
+import { AskPersonModal, PersonPanel } from './AskPerson';
 import AssistantIcon from './AssistantIcon';
 import AssistantAnswer from './AssistantAnswer';
 import { isWideAnswer } from './answerFormat';
@@ -28,6 +31,8 @@ import {
   askAssistant,
   clearAssistantChat,
   getAssistantStatus,
+  getHandovers,
+  markHandoverSeen,
   AssistantError,
   type AssistantSource,
   type AssistantQuota,
@@ -50,10 +55,15 @@ import './AssistantChat.css';
 // Questions can be spoken (useVoiceRecorder), in any language.
 
 interface ChatMessage {
-  role: 'user' | 'assistant';
+  // 'person': a reply from the person a question was sent to ("Ask a person").
+  role: 'user' | 'assistant' | 'person';
   text: string;
   sources?: AssistantSource[];
   error?: boolean;
+  // The masjid records had nothing for it: "Ask a person" under the answer.
+  offer?: { reason?: string };
+  // For 'person': the question the reply is about.
+  about?: string;
   // When it was sent or answered (ms); messages kept from before have none.
   at?: number;
 }
@@ -218,7 +228,8 @@ const CHAT_THEME = {};
 
 // `embedded`: inside the floating chat's drawer; `onClose` closes it.
 // One answer: the text, its sources, and copy / image / print (AnswerActions).
-function AnswerBubble({ m }: { m: ChatMessage }) {
+// `onAskPerson`: a logged-in user can send a question the records had nothing for to a person.
+function AnswerBubble({ m, onAskPerson }: { m: ChatMessage; onAskPerson?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   return (
     <div ref={ref} className={`assistant-bubble is-assistant${!m.error && isWideAnswer(m.text) ? ' is-wide' : ''}`}>
@@ -233,6 +244,11 @@ function AnswerBubble({ m }: { m: ChatMessage }) {
           ))}
         </div>
       )}
+      {m.offer && onAskPerson && (
+        <button type="button" className="assistant-ask-person" onClick={onAskPerson}>
+          <UserOutlined /> Ask a person · ഒരാളോട് ചോദിക്കൂ
+        </button>
+      )}
       <div className="assistant-answer-foot">
         {!m.error && <AnswerActions text={m.text} target={ref} />}
         <MessageTime at={m.at} />
@@ -240,6 +256,23 @@ function AnswerBubble({ m }: { m: ChatMessage }) {
     </div>
   );
 }
+
+// A reply from the person, in the chat where the question was asked.
+function PersonBubble({ m, person }: { m: ChatMessage; person: string }) {
+  return (
+    <div className="assistant-bubble is-person">
+      <div className="assistant-person-head">
+        <UserOutlined /> {person} replied · മറുപടി
+      </div>
+      {m.about && <div className="assistant-person-about">“{m.about}”</div>}
+      <div className="assistant-person-text">{m.text}</div>
+      <MessageTime at={m.at} />
+    </div>
+  );
+}
+
+// How often an open chat checks for the person's replies.
+const REPLY_CHECK_MS = 60000;
 
 export default function AssistantChat({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void }) {
   const { isAdmin, isLoggedIn, username } = useAuth();
@@ -253,6 +286,11 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
   const [quota, setQuota] = useState<AssistantQuota | null>(null);
   const [askingAs, setAskingAs] = useState<AssistantStatus['askingAs']>();
   const [voiceLanguage, setVoiceLanguage] = useState(loadVoiceLanguage);
+  // "Ask a person" (AskPerson.tsx): who answers, unread replies, the confirm dialog, the list.
+  const [handover, setHandover] = useState<AssistantStatus['handover']>(null);
+  const [askPersonFor, setAskPersonFor] = useState<{ question?: string; reason?: string } | null>(null);
+  const [personPanel, setPersonPanel] = useState(false);
+  const [panelKey, setPanelKey] = useState(0);
   const [autoSend, setAutoSend] = useState(loadAutoSend);
   const shellRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -284,6 +322,7 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
         if (cancelled) return;
         setQuota(s.limit !== undefined ? { limit: s.limit ?? null, remaining: s.remaining ?? null } : null);
         setAskingAs(s.askingAs);
+        setHandover(s.handover ?? null);
       })
       .catch(() => {});
     return () => {
@@ -301,6 +340,35 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
   }, [messages, account, asking]);
 
   const suggestions = !isLoggedIn ? GUEST_SUGGESTIONS : isAdmin ? ADMIN_SUGGESTIONS : MEMBER_SUGGESTIONS;
+  const person = handover?.person ?? null;
+
+  // The person's new replies come into the chat, then count as read. Checked on opening and
+  // every minute while the chat is open and in view.
+  const pullReplies = useCallback(async () => {
+    if (!isLoggedIn || !person) return;
+    try {
+      const { tickets } = await getHandovers();
+      const fresh = tickets.filter((t) => t.newReplies > 0);
+      if (!fresh.length) return;
+      const replies: ChatMessage[] = fresh.flatMap((t) =>
+        t.messages
+          .filter((m) => m.from === 'owner')
+          .slice(-t.newReplies)
+          .map((m) => ({ role: 'person' as const, text: m.text, about: t.question, at: new Date(m.at).getTime() }))
+      );
+      setMessages((ms) => [...ms, ...replies]);
+      await Promise.all(fresh.map((t) => markHandoverSeen(t.id).catch(() => {})));
+      setHandover((h) => h && { ...h, newReplies: 0 });
+      setPanelKey((k) => k + 1);
+    } catch {
+      // checked again in a minute
+    }
+  }, [isLoggedIn, person]);
+  useEffect(() => {
+    pullReplies();
+    const timer = setInterval(() => document.visibilityState === 'visible' && pullReplies(), REPLY_CHECK_MS);
+    return () => clearInterval(timer);
+  }, [pullReplies]);
 
   const ask = async (question: string) => {
     const q = question.trim();
@@ -310,8 +378,8 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
     setRecent((r) => rememberQuestion(account, r, q));
     setAsking(true);
     try {
-      const { answer, sources, limit, remaining } = await askAssistant(q, chatId);
-      setMessages((m) => [...m, { role: 'assistant', text: answer, sources, at: Date.now() }]);
+      const { answer, sources, limit, remaining, handover: offer } = await askAssistant(q, chatId);
+      setMessages((m) => [...m, { role: 'assistant', text: answer, sources, at: Date.now(), ...(offer?.offer ? { offer: { reason: offer.reason } } : {}) }]);
       setQuota({ limit, remaining });
     } catch (err) {
       setMessages((m) => [...m, { role: 'assistant', text: err instanceof Error ? err.message : 'The assistant could not answer', error: true, at: Date.now() }]);
@@ -383,14 +451,34 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
           <div className="assistant-head-title">
             Masjid Assistant <span className="assistant-ai-badge">AI</span>
           </div>
-          <div className="assistant-head-sub">{askingAsText}</div>
+          <div className="assistant-head-sub">
+            {askingAsText}
+            {/* On a phone the count sits here: the header has no room for the pill too. */}
+            {quota?.limit ? <span className="assistant-head-quota"> · {noneLeft ? 'none left today' : `${quota.remaining}/${quota.limit} left`}</span> : null}
+          </div>
         </div>
         {quotaPill}
+        {person && (
+          <Tooltip title={`Your questions to ${person}`}>
+            <Badge dot={Boolean(handover?.newReplies)} offset={[-6, 6]}>
+              <Button type="text" shape="circle" icon={<CustomerServiceOutlined />} onClick={() => setPersonPanel(true)} aria-label={`Your questions to ${person}`} />
+            </Badge>
+          </Tooltip>
+        )}
         {clearButton}
         {onClose && <Button type="text" shape="circle" icon={<CloseOutlined />} onClick={onClose} aria-label="Close the assistant" />}
       </div>
 
-      <div className="assistant-messages" ref={listRef}>
+      {personPanel && person && (
+        <PersonPanel
+          person={person}
+          refreshKey={panelKey}
+          onBack={() => setPersonPanel(false)}
+          onAskNew={() => setAskPersonFor({})}
+          onSeen={() => setHandover((h) => h && { ...h, newReplies: 0 })}
+        />
+      )}
+      <div className="assistant-messages" ref={listRef} hidden={personPanel && Boolean(person)}>
         {messages.length === 0 && (
           <div className="assistant-empty">
             <span className="assistant-empty-avatar">
@@ -436,7 +524,14 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
           </div>
         )}
         {messages.map((m, i) =>
-          m.role === 'user' ? (
+          m.role === 'person' ? (
+            <div key={i} className="assistant-row is-assistant">
+              <span className="assistant-avatar assistant-person-avatar" aria-hidden>
+                <UserOutlined />
+              </span>
+              <PersonBubble m={m} person={person ?? 'The masjid'} />
+            </div>
+          ) : m.role === 'user' ? (
             <div key={i} className="assistant-row is-user">
               <div className="assistant-bubble is-user">
                 {m.text}
@@ -448,7 +543,11 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
               <span className="assistant-avatar">
                 <AssistantIcon size={30} />
               </span>
-              <AnswerBubble m={m} />
+              <AnswerBubble
+                m={m}
+                // The question this answer was for: the user's message before it.
+                onAskPerson={person ? () => setAskPersonFor({ question: [...messages.slice(0, i)].reverse().find((x) => x.role === 'user')?.text, reason: m.offer?.reason }) : undefined}
+              />
             </div>
           )
         )}
@@ -470,7 +569,7 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
       </div>
 
       {/* Bottom, always in view: recent questions, the limit note, the composer. */}
-      <div className="assistant-bottom">
+      <div className="assistant-bottom" hidden={personPanel && Boolean(person)}>
         {/* After the first question: the ready questions as one scrolling row
             of chips, then the user's own recent ones. */}
         {messages.length > 0 && voice.status === 'idle' && !noneLeft && (
@@ -589,6 +688,17 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
           {!showVoice && <span className="assistant-disclaimer">Answers come from the masjid records - check important figures.</span>}
         </div>
       </div>
+      {person && (
+        <AskPersonModal
+          open={Boolean(askPersonFor)}
+          onClose={() => setAskPersonFor(null)}
+          chatId={chatId}
+          person={person}
+          question={askPersonFor?.question}
+          reason={askPersonFor?.reason}
+          onSent={() => setPanelKey((k) => k + 1)}
+        />
+      )}
     </div>
     </ConfigProvider>
   );

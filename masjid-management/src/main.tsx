@@ -6,6 +6,7 @@ import App from './App.tsx'
 import { SettingsProvider } from './context/SettingsContext.tsx'
 import { AuthProvider } from './context/AuthContext.tsx'
 import { clearBadgeCount } from './utils/badge.ts'
+import { NEW_VERSION_EVENT } from './components/NewVersionBar.tsx'
 
 // Clear the home-screen icon's notification-count badge whenever the user
 // actually opens/returns to the app, not just on a plain page load - covers
@@ -28,6 +29,11 @@ window.addEventListener('focus', clearBadge)
 // and periodically as a fallback for sessions left open in the background.
 const UPDATE_CHECK_INTERVAL_MS = 45 * 60 * 1000
 registerSW({
+  // A new version is running in the service worker: say so with a Reload button
+  // (NewVersionBar) instead of reloading by itself - a member may be typing a question.
+  onNeedReload() {
+    window.dispatchEvent(new Event(NEW_VERSION_EVENT))
+  },
   onRegisteredSW(swUrl, registration) {
     if (!registration) return
 

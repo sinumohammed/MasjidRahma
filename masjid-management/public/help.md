@@ -179,6 +179,12 @@ The number at the top is how many questions are left today. The clear button sta
 ## Speak your question
 Tap the microphone, speak, then tap the tick (the x cancels). Choose the language next to Voice. With Auto-send on, the question is sent as soon as it is turned into text.
 
+## Ask a person
+Roles: admin, member
+When the Assistant cannot find the answer in the masjid records, tap Ask a person under its answer. Check the question, add a note if you like, then tap Send. Sino reads your question and this chat and replies in the Assistant.
+To ask Sino something directly: Assistant > the headset button at the top > Ask Sino a new question.
+A new reply shows as a dot on the Assistant and comes into the chat. The headset button lists everything you sent, with its status - Waiting, Answered or Closed. Open one to read the whole conversation and write back.
+
 # Telegram
 
 ## Ask the Assistant on Telegram
@@ -189,9 +195,14 @@ Roles: member
 Link it: Profile > Telegram > Link my Telegram > Open Telegram, then press Start (the link works once, within 10 minutes). Or open the masjid bot and share your phone number - the number on your member record.
 To unlink: Profile > Telegram > the red unlink button. The bot then answers that account as a guest.
 
+## Ask a person on Telegram
+Roles: admin, member
+After an answer that did not help, send /person in the bot (you can add a note after it: /person I could not find it in Settings). Sino's reply comes in the bot and in the app's Assistant. To write back: /reply and your message.
+This works once your Telegram is linked - see Link or unlink your Telegram.
+
 ## Set up the bot
 Roles: admin
-Settings > Telegram shows whether the bot is connected and how many accounts are linked. If Telegram does not send messages here, tap Connect the bot.
+Settings > Telegram shows whether the bot is connected and how many accounts are linked. If Telegram does not send messages here, tap Connect the bot. Tap it again after an update to show new commands, such as /person, in the bot's menu.
 
 ## Claude access (MCP)
 Roles: admin

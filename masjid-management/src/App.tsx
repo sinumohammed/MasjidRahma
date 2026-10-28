@@ -33,6 +33,7 @@ import MyNotifications from './components/MyNotifications';
 import AssistantChat from './components/AssistantChat';
 import AboutMasjid from './components/About/AboutMasjid';
 import AssistantIcon from './components/AssistantIcon';
+import NewVersionBar from './components/NewVersionBar';
 import AuthModal from './components/AuthModal';
 import BrandMark from './components/BrandMark';
 import { appTheme } from './theme';
@@ -104,15 +105,27 @@ function App() {
   // logout. Not logged in, it answers the food-duty schedule only.
   const [assistantAvailable, setAssistantAvailable] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // Unread replies to "Ask a person" (AskPerson.tsx): a dot on the Assistant. Asked again when
+  // the app comes back into view and when the assistant is closed (it reads them while open).
+  const [personReplies, setPersonReplies] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    getAssistantStatus()
-      .then(({ available }) => !cancelled && setAssistantAvailable(available))
-      .catch(() => !cancelled && setAssistantAvailable(false));
+    const check = () =>
+      getAssistantStatus()
+        .then(({ available, handover }) => {
+          if (cancelled) return;
+          setAssistantAvailable(available);
+          setPersonReplies(handover?.newReplies ?? 0);
+        })
+        .catch(() => !cancelled && setAssistantAvailable(false));
+    check();
+    const onVisible = () => document.visibilityState === 'visible' && !assistantOpen && check();
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [isLoggedIn, username]);
+  }, [isLoggedIn, username, assistantOpen]);
   const [isMobile, setIsMobile] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [memberUniqueId, setMemberUniqueId] = useState<string | null>(null);
@@ -372,7 +385,7 @@ function App() {
           {
             key: 'assistant',
             icon: <span className="anticon"><AssistantIcon size={18} /></span>,
-            label: 'Assistant',
+            label: personReplies ? <Badge dot offset={[6, 0]}>Assistant</Badge> : 'Assistant',
           },
         ]
       : []),
@@ -415,7 +428,7 @@ function App() {
     { key: 'dashboard', label: 'Home', icon: <HomeOutlined />, onClick: () => goTo('dashboard') },
     { key: 'yearly-schedule', label: 'Schedule', icon: <CalendarOutlined />, onClick: () => goTo('yearly-schedule') },
     ...(assistantAvailable
-      ? [{ key: 'assistant', label: 'Assistant', icon: <span className="anticon"><AssistantIcon size={24} /></span>, onClick: () => setAssistantOpen(true) }]
+      ? [{ key: 'assistant', label: 'Assistant', icon: <span className="anticon"><AssistantIcon size={24} /></span>, onClick: () => setAssistantOpen(true), badge: personReplies }]
       : []),
     ...(isAdmin
       ? [{ key: 'transactions', label: 'Accounts', icon: <FileTextOutlined />, onClick: () => goTo('transactions') }]
@@ -689,8 +702,10 @@ function App() {
     {assistantAvailable && activeKey !== 'assistant' && (
       <>
         {!isMobile && <button type="button" className="assistant-launcher" onClick={() => setAssistantOpen(true)} aria-label="Ask the masjid assistant" title="Ask the masjid assistant">
-          <AssistantIcon size={38} bare />
-          <span className="assistant-launcher-label">Ask Assistant</span>
+          <Badge count={personReplies} size="small" offset={[-4, 4]}>
+            <AssistantIcon size={38} bare />
+          </Badge>
+          <span className="assistant-launcher-label">{personReplies ? 'New reply' : 'Ask Assistant'}</span>
         </button>}
         <Drawer
           title={null}
@@ -707,6 +722,7 @@ function App() {
       </>
     )}
     <AuthModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+    <NewVersionBar />
     </ConfigProvider>
   );
 }
