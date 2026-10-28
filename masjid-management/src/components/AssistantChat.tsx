@@ -271,8 +271,9 @@ function PersonBubble({ m, person }: { m: ChatMessage; person: string }) {
   );
 }
 
-// How often an open chat checks for the person's replies.
+// How often an open chat checks for the person's replies: often while a request waits for them.
 const REPLY_CHECK_MS = 60000;
+const REPLY_CHECK_WAITING_MS = 10000;
 
 export default function AssistantChat({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void }) {
   const { isAdmin, isLoggedIn, username } = useAuth();
@@ -342,14 +343,17 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
   const suggestions = !isLoggedIn ? GUEST_SUGGESTIONS : isAdmin ? ADMIN_SUGGESTIONS : MEMBER_SUGGESTIONS;
   const person = handover?.person ?? null;
 
-  // The person's new replies come into the chat, then count as read. Checked on opening and
-  // every minute while the chat is open and in view.
-  const pullReplies = useCallback(async () => {
-    if (!isLoggedIn || !person) return;
+  // The person's new replies come into the chat, then count as read. Checked on opening, when the
+  // app comes back into view, and while the chat is open: every 10 seconds while a request waits for
+  // the person (found in use: a reply showed only after reopening the chat), else every minute.
+  // Returns whether a request is waiting.
+  const pullReplies = useCallback(async (): Promise<boolean> => {
+    if (!isLoggedIn || !person) return false;
     try {
       const { tickets } = await getHandovers();
+      const waiting = tickets.some((t) => t.status === 'open');
       const fresh = tickets.filter((t) => t.newReplies > 0);
-      if (!fresh.length) return;
+      if (!fresh.length) return waiting;
       const replies: ChatMessage[] = fresh.flatMap((t) =>
         t.messages
           .filter((m) => m.from === 'owner')
@@ -360,15 +364,34 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
       await Promise.all(fresh.map((t) => markHandoverSeen(t.id).catch(() => {})));
       setHandover((h) => h && { ...h, newReplies: 0 });
       setPanelKey((k) => k + 1);
+      return waiting;
     } catch {
-      // checked again in a minute
+      return false;
     }
   }, [isLoggedIn, person]);
+  // Sending a request starts the quick checks at once (sentAt).
+  const [sentAt, setSentAt] = useState(0);
   useEffect(() => {
-    pullReplies();
-    const timer = setInterval(() => document.visibilityState === 'visible' && pullReplies(), REPLY_CHECK_MS);
-    return () => clearInterval(timer);
-  }, [pullReplies]);
+    if (!isLoggedIn || !person) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
+    const loop = async () => {
+      const waiting = document.visibilityState === 'visible' ? await pullReplies() : false;
+      if (!stopped) timer = setTimeout(loop, waiting ? REPLY_CHECK_WAITING_MS : REPLY_CHECK_MS);
+    };
+    loop();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      clearTimeout(timer);
+      loop();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [pullReplies, isLoggedIn, person, sentAt]);
 
   const ask = async (question: string) => {
     const q = question.trim();
@@ -476,6 +499,7 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
           onBack={() => setPersonPanel(false)}
           onAskNew={() => setAskPersonFor({})}
           onSeen={() => setHandover((h) => h && { ...h, newReplies: 0 })}
+          onWrote={() => setSentAt(Date.now())}
         />
       )}
       <div className="assistant-messages" ref={listRef} hidden={personPanel && Boolean(person)}>
@@ -696,7 +720,10 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
           person={person}
           question={askPersonFor?.question}
           reason={askPersonFor?.reason}
-          onSent={() => setPanelKey((k) => k + 1)}
+          onSent={() => {
+            setPanelKey((k) => k + 1);
+            setSentAt(Date.now());
+          }}
         />
       )}
     </div>

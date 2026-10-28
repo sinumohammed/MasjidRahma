@@ -92,7 +92,8 @@ export function AskPersonModal({
 }
 
 // Everything sent to the person, newest first; one opens to its thread, where the user can write back.
-export function PersonPanel({ person, onBack, onAskNew, onSeen, refreshKey }: { person: string; onBack: () => void; onAskNew: () => void; onSeen: () => void; refreshKey: number }) {
+// onWrote: the user wrote back - the chat checks for the reply more often again.
+export function PersonPanel({ person, onBack, onAskNew, onSeen, onWrote, refreshKey }: { person: string; onBack: () => void; onAskNew: () => void; onSeen: () => void; onWrote: () => void; refreshKey: number }) {
   const [tickets, setTickets] = useState<HandoverTicket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -129,6 +130,7 @@ export function PersonPanel({ person, onBack, onAskNew, onSeen, refreshKey }: { 
       const updated = await writeToPerson(open.id, draft.trim());
       setTickets((ts) => ts && ts.map((t) => (t.id === updated.id ? updated : t)));
       setDraft('');
+      onWrote();
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Could not send it - please try again');
     } finally {
