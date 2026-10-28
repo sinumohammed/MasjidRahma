@@ -347,11 +347,19 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
   // app comes back into view, and while the chat is open: every 10 seconds while a request waits for
   // the person (found in use: a reply showed only after reopening the chat), else every minute.
   // Returns whether a request is waiting.
+  const ticketsShape = useRef<string | null>(null);
   const pullReplies = useCallback(async (): Promise<boolean> => {
     if (!isLoggedIn || !person) return false;
     try {
       const { tickets } = await getHandovers();
       const waiting = tickets.some((t) => t.status === 'open');
+      // Any change - a status (closed by the person), a message - redraws the open list
+      // (found in use: a closed request still showed as waiting until the chat was reopened).
+      const shape = tickets.map((t) => `${t.id}:${t.status}:${t.messages.length}`).join(',');
+      if (shape !== ticketsShape.current) {
+        if (ticketsShape.current !== null) setPanelKey((k) => k + 1);
+        ticketsShape.current = shape;
+      }
       const fresh = tickets.filter((t) => t.newReplies > 0);
       if (!fresh.length) return waiting;
       const replies: ChatMessage[] = fresh.flatMap((t) =>
@@ -377,7 +385,8 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
     let stopped = false;
     const loop = async () => {
       const waiting = document.visibilityState === 'visible' ? await pullReplies() : false;
-      if (!stopped) timer = setTimeout(loop, waiting ? REPLY_CHECK_WAITING_MS : REPLY_CHECK_MS);
+      // Often while a request waits, or while the list of requests is open on screen.
+      if (!stopped) timer = setTimeout(loop, waiting || personPanel ? REPLY_CHECK_WAITING_MS : REPLY_CHECK_MS);
     };
     loop();
     const onVisible = () => {
@@ -391,7 +400,8 @@ export default function AssistantChat({ embedded = false, onClose }: { embedded?
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [pullReplies, isLoggedIn, person, sentAt]);
+    // Opening the list of requests checks at once.
+  }, [pullReplies, isLoggedIn, person, sentAt, personPanel]);
 
   const ask = async (question: string) => {
     const q = question.trim();
