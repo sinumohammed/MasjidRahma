@@ -3719,7 +3719,7 @@ async function askAssistant({ user, usage, question, conversationId, ref, displa
     const aiRes = await fetch(AI_ASK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_ASK_KEY}` },
-      body: JSON.stringify({ question, conversationId, ...mode, user: { token: aiUserToken(user), ref }, ...(display ? { display } : {}) }),
+      body: JSON.stringify({ question, conversationId, ...mode, user: { token: aiUserToken(user), ref, role: !user ? 'guest' : user.isAdmin ? 'admin' : 'member' }, ...(display ? { display } : {}) }),
       // The AI may wait for this server's own /api/ai/* calls (a cold start of this server).
       signal: AbortSignal.timeout(120000),
     });
