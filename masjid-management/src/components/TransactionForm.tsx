@@ -64,7 +64,11 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
       { label: 'General', value: 'General' },
       { label: 'Industrial Work Salary', value: 'Industrial Work Salary' },
       { label: 'Industrial Materials', value: 'Industrial Materials' },
-      { label: 'Tax', value: 'Tax' }
+      { label: 'Tax', value: 'Tax' },
+      // Costs for the masjid land's produce (same names as the income side)
+      { label: 'Adakka / അടയ്ക്ക (Arecanut)', value: 'Adakka' },
+      { label: 'Tenga / തേങ്ങ (Coconut)', value: 'Tenga' },
+      { label: 'Vazhakula / വാഴക്കുല (Banana bunch)', value: 'Vazhakula' }
     ],
   };
 
