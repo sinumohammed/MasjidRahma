@@ -46,7 +46,11 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
       { label: 'General', value: 'General' },
       { label: 'Nikah', value: 'Nikah' },
       { label: 'Opening Balance', value: 'Opening Balance' },
-      { label: 'Sadaqah', value: 'Sadaqah' }
+      { label: 'Sadaqah', value: 'Sadaqah' },
+      // Produce from the masjid's land - Malayalam name shown with the English one
+      { label: 'Adakka / അടയ്ക്ക (Arecanut)', value: 'Adakka' },
+      { label: 'Tenga / തേങ്ങ (Coconut)', value: 'Tenga' },
+      { label: 'Vazhakula / വാഴക്കുല (Banana bunch)', value: 'Vazhakula' }
     ],
     expense: [
       { label: 'Imam Salary', value: 'Imam Salary' },
