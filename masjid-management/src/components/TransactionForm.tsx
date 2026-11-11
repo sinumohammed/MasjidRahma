@@ -36,6 +36,10 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
   const categories = {
     income: [
       { label: 'Masjid payment', value: 'Masjid payment' },
+      // Produce from the masjid's land - Malayalam name shown with the English one
+      { label: 'Adakka / അടയ്ക്ക (Arecanut)', value: 'Adakka' },
+      { label: 'Tenga / തേങ്ങ (Coconut)', value: 'Tenga' },
+      { label: 'Vazhakula / വാഴക്കുല (Banana bunch)', value: 'Vazhakula' },
       { label: 'Jummah Collection', value: 'Jummah Collection' },
       { label: 'General Income', value: 'General Income' },
       { label: 'Donation', value: 'Donation' },
@@ -46,11 +50,7 @@ export default function TransactionForm({ transaction, onSuccess, onCancel }: Tr
       { label: 'General', value: 'General' },
       { label: 'Nikah', value: 'Nikah' },
       { label: 'Opening Balance', value: 'Opening Balance' },
-      { label: 'Sadaqah', value: 'Sadaqah' },
-      // Produce from the masjid's land - Malayalam name shown with the English one
-      { label: 'Adakka / അടയ്ക്ക (Arecanut)', value: 'Adakka' },
-      { label: 'Tenga / തേങ്ങ (Coconut)', value: 'Tenga' },
-      { label: 'Vazhakula / വാഴക്കുല (Banana bunch)', value: 'Vazhakula' }
+      { label: 'Sadaqah', value: 'Sadaqah' }
     ],
     expense: [
       { label: 'Imam Salary', value: 'Imam Salary' },
