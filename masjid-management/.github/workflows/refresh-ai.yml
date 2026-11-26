@@ -1,0 +1,27 @@
+# After Vercel deploys this repo to production, the AI service re-reads the app's tools and help pages (the Command
+# Center, the assistants). Vercel reports each deploy to GitHub as a deployment status; this listens for a successful
+# production one and calls the AI service. Works on every Vercel plan.
+# Secret (repo Settings > Secrets and variables > Actions): AI_REFRESH_SECRET = the AI service's REFRESH_HOOK_SECRET.
+# Without it the job does nothing. The AI service also refreshes every app once a day.
+name: Refresh the AI service
+on: deployment_status
+permissions: {}
+jobs:
+  refresh:
+    if: github.event.deployment_status.state == 'success' && startsWith(github.event.deployment.environment, 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Tell the AI service
+        env:
+          SECRET: ${{ secrets.AI_REFRESH_SECRET }}
+          ENVIRONMENT: ${{ github.event.deployment.environment }}
+          DEFAULT_PROJECT: masjid-management
+        run: |
+          if [ -z "$SECRET" ]; then echo "AI_REFRESH_SECRET is not set - nothing to do"; exit 0; fi
+          # Vercel names it "Production – <project>" when one repo has several projects, else just "Production".
+          project="${ENVIRONMENT##*– }"; [ "$project" = "$ENVIRONMENT" ] && project="$DEFAULT_PROJECT"
+          echo "project: $project"
+          curl -fsS --max-time 150 -X POST https://ai-engineer-api-jet.vercel.app/api/hooks/refresh \
+            -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg p "$project" '{project: $p}')"
