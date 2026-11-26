@@ -3067,7 +3067,8 @@ async function requireAiToken(req, res, next) {
     return res.status(401).json({ error: 'AI access token required' });
   }
   // The MCP server checks the user per tool call: listing its tools needs none.
-  if (req.path === '/openapi.json' || req.path === '/mcp') return next();
+  // The usage report is the owner's, across everyone: the AI service's token only, no user.
+  if (req.path === '/openapi.json' || req.path === '/mcp' || req.path === '/usage') return next();
   try {
     req.aiUser = aiUserFrom(req);
   } catch (error) {
@@ -3123,6 +3124,66 @@ const AMOUNTS_IN = 'INR (Indian rupees, ₹)';
 const inRupees = (data) => (Array.isArray(data) ? { amountsIn: AMOUNTS_IN, items: data } : { amountsIn: AMOUNTS_IN, ...data });
 
 ai.get('/openapi.json', (req, res) => res.json(AI_OPENAPI));
+
+// Usage (26 Nov) for the owner's usage screen in the AI service's Command Center: how often people open the app and
+// what work went through. Opens come from the page-visit log the app already keeps (activity_logs): a visit 30 minutes
+// or more after the same person's last one is a new open. Logged-in people by their login; visitors who are not
+// logged in together as one "Visitors" row (told apart by address only to count their opens).
+async function usageReport(want = 30) {
+  const n = Math.max(1, Math.min(90, Math.round(Number(want) || 30)));
+  const days = [];
+  for (let i = n - 1; i >= 0; i--) days.push(todayFormatter.format(new Date(Date.now() - i * 86400e3)));
+  const since = new Date(Date.now() - (n + 1) * 86400e3);
+  const [rows, members, work, ai] = await Promise.all([
+    dbAll(
+      `WITH v AS (
+         SELECT username, is_admin, member_id, created_at,
+                COALESCE(username, 'visitor:' || COALESCE(ip, '')) AS who,
+                to_char(created_at AT TIME ZONE 'UTC' AT TIME ZONE $2, 'YYYY-MM-DD') AS day,
+                lag(created_at) OVER (PARTITION BY COALESCE(username, 'visitor:' || COALESCE(ip, '')) ORDER BY created_at) AS prev
+           FROM activity_logs WHERE event_type IN ('login', 'page_visit') AND created_at >= $1)
+       SELECT username, bool_or(is_admin) AS is_admin, max(member_id) AS member_id, day,
+              count(*) FILTER (WHERE prev IS NULL OR created_at - prev > interval '30 minutes')::int AS opens,
+              max(created_at) AS last_at
+         FROM v GROUP BY username, day`,
+      [since, MASJID_TIMEZONE]
+    ),
+    dbAll('SELECT id, name, created_at FROM members'),
+    dbGet(`SELECT (SELECT count(*) FROM transactions WHERE created_at >= $1)::int AS transactions,
+                  (SELECT count(*) FROM announcements WHERE created_at >= $1)::int AS announcements,
+                  (SELECT count(*) FROM members WHERE active)::int AS members`, [since]),
+    dbGet('SELECT COALESCE(sum(count), 0)::int AS questions FROM assistant_usage WHERE day >= $1', [days[0]]),
+  ]);
+  const inRange = rows.filter((r) => days.includes(r.day));
+  const nameOf = new Map(members.map((m) => [m.id, m.name]));
+  const people = new Map();
+  for (const r of inRange) {
+    const key = r.username ?? 'visitors';
+    const p = people.get(key) ?? { name: r.username ? (nameOf.get(r.member_id) || r.username) : 'Visitors (not logged in)', role: r.username ? (r.is_admin ? 'admin' : 'member') : 'guest', opens: 0, days: new Set(), lastAt: 0 };
+    p.opens += r.opens; p.days.add(r.day); p.lastAt = Math.max(p.lastAt, new Date(r.last_at).getTime());
+    people.set(key, p);
+  }
+  const first = members.reduce((t, m) => Math.min(t, new Date(m.created_at ?? Date.now()).getTime()), Date.now());
+  const org = {
+    id: 'masjid', name: 'Masjid', plan: 'own', status: 'active', demo: false, trialEndsAt: null, paidUntil: null,
+    since: new Date(first).toISOString(),
+    opens: inRange.reduce((t, r) => t + r.opens, 0),
+    activeDays: new Set(inRange.map((r) => r.day)).size,
+    lastAt: inRange.length ? new Date(Math.max(...inRange.map((r) => new Date(r.last_at).getTime()))).toISOString() : null,
+    people: [...people.values()].map((p) => ({ name: p.name, role: p.role, opens: p.opens, activeDays: p.days.size, lastAt: new Date(p.lastAt).toISOString() })).sort((x, y) => y.opens - x.opens),
+    work: { transactions: work.transactions, announcements: work.announcements, members: work.members, aiQuestions: ai.questions },
+    byDay: days.map((d) => inRange.filter((r) => r.day === d).reduce((t, r) => t + r.opens, 0)),
+  };
+  return { app: 'masjid', days: n, from: days[0], to: days[n - 1], dayList: days, orgs: [org] };
+}
+ai.get('/usage', async (req, res) => {
+  try {
+    res.json(await usageReport(req.query.days));
+  } catch (error) {
+    console.error('[ai] usage:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 aiGet('/today-duty', async () => {
   const a = await getTodaysAssignment();
