@@ -86,7 +86,7 @@ export function handoverRouter({ api, requireAuth, conversationFor, chatIdPatter
 
   router.post('/handovers/:id/seen', requireAuth, async (req, res) => send(res, await api.seen(req.user, req.params.id)));
 
-  // From the AI service: the person replied. A member linked on Telegram gets it there.
+  // From the AI service: the person replied. Telegram (if linked), My Notifications and a phone notification (app.js notifyHandoverReply).
   router.post('/handover-reply', express.json({ limit: '64kb' }), async (req, res) => {
     if (!aiTokenMatches(req)) return res.status(401).json({ error: 'AI access token required' });
     const userId = String(req.body?.user?.ref ?? '').match(/^user:(.+)$/)?.[1];

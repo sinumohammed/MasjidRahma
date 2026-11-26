@@ -3912,8 +3912,38 @@ app.use('/api/assistant', handoverRouter({
   conversationFor,
   chatIdPattern: CHAT_ID,
   aiTokenMatches: (req) => Boolean(MASJID_AI_TOKEN) && crypto.timingSafeEqual(sha256(getBearerToken(req) ?? ''), sha256(MASJID_AI_TOKEN)),
-  notifyUser: telegramBot.notifyUser,
+  notifyUser: notifyHandoverReply,
 }));
+
+// The person replied to an "Ask a person" ticket: Telegram (if linked), plus - for a member - a line in My Notifications
+// and a phone notification on every device that allowed them; a tap opens the Assistant chat on the reply. Without
+// this, a member who is not on Telegram only saw the reply the next time they opened the app. The number reached.
+async function notifyHandoverReply(userId, { question, text }) {
+  let reached = 0;
+  try {
+    reached += await telegramBot.notifyUser(userId, { question, text });
+  } catch (err) {
+    console.warn(`Ask a person: Telegram could not pass the reply on: ${err.message}`);
+  }
+  const user = await dbGet('SELECT member_id FROM users WHERE id = $1', [userId]);
+  if (!user?.member_id) return reached; // an admin login without a member: Telegram and the chat only
+  const title = `${HANDOVER_PERSON} replied · മറുപടി`;
+  const short = text.length > 140 ? `${text.slice(0, 137)}…` : text;
+  const body = question ? `About “${question.length > 60 ? `${question.slice(0, 57)}…` : question}”: ${short}` : short;
+  try {
+    await recordMemberNotification(user.member_id, title, body);
+  } catch (err) {
+    console.warn(`Ask a person: could not record the reply notification: ${err.message}`);
+  }
+  if (!pushEnabled) return reached;
+  try {
+    const subscriptions = await dbAll('SELECT * FROM push_subscriptions WHERE member_id = $1', [user.member_id]);
+    if (subscriptions.length) reached += (await sendPushToSubscriptions(subscriptions, JSON.stringify({ title, body, url: '/?view=assistant' }))).sent;
+  } catch (err) {
+    console.warn(`Ask a person: could not send the reply push: ${err.message}`);
+  }
+  return reached;
+}
 
 app.get('/health', (req, res) => {
   res.json({ status: 'API is running' });

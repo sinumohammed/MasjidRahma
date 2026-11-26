@@ -334,6 +334,10 @@ function App() {
     if (view === 'announcements' || view === 'my-notifications') {
       setActiveKey(view);
       window.history.replaceState({}, '', window.location.pathname);
+    } else if (view === 'assistant') {
+      // "Sino replied" (an Ask a person ticket): open the chat, where the reply is.
+      setAssistantOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
